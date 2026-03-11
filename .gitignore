@@ -1,0 +1,17 @@
+# Root gitignore
+.DS_Store
+Thumbs.db
+*.log
+
+# Environment files
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+docker-compose.override.yml

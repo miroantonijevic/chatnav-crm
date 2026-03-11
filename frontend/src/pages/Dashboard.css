@@ -1,0 +1,139 @@
+.dashboard {
+  max-width: 1200px;
+}
+
+.dashboard h1 {
+  margin-bottom: 2rem;
+  color: #2c3e50;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+}
+
+.stat-card {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.stat-card h3 {
+  margin: 0 0 0.5rem 0;
+  color: #7f8c8d;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.stat-value {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #667eea;
+  margin: 0.5rem 0;
+}
+
+.stat-card p {
+  margin: 0.5rem 0 0 0;
+  color: #7f8c8d;
+  font-size: 0.9rem;
+}
+
+.section {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.section h2 {
+  margin: 0;
+  color: #2c3e50;
+}
+
+.btn-link {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+.btn-link-small {
+  color: #667eea;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.owner-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background-color: #e8f4f8;
+  color: #0c5460;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid #bee5eb;
+  cursor: help;
+}
+
+.empty-message {
+  color: #7f8c8d;
+  text-align: center;
+  padding: 2rem;
+}
+
+.contacts-table {
+  overflow-x: auto;
+}
+
+.contacts-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.contacts-table th {
+  text-align: left;
+  padding: 0.75rem;
+  background-color: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.contacts-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.contacts-table tr:hover {
+  background-color: #f8f9fa;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  background-color: #e3f2fd;
+  color: #1976d2;
+}
+
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: #7f8c8d;
+}

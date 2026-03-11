@@ -1,0 +1,49 @@
+.reminders-page {
+  max-width: 1200px;
+}
+
+.reminders-page h1 {
+  margin-bottom: 2rem;
+  color: #2c3e50;
+}
+
+.stats-section,
+.actions-section,
+.info-section {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.stats-section h2,
+.actions-section h2,
+.info-section h2 {
+  margin: 0 0 1.5rem 0;
+  color: #2c3e50;
+}
+
+.actions-section p {
+  margin-bottom: 1rem;
+  color: #7f8c8d;
+  line-height: 1.6;
+}
+
+.info-section ul {
+  margin: 0;
+  padding-left: 1.5rem;
+  color: #2c3e50;
+  line-height: 1.8;
+}
+
+.info-section li {
+  margin-bottom: 0.5rem;
+}
+
+.success-message pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: monospace;
+  font-size: 0.875rem;
+}
