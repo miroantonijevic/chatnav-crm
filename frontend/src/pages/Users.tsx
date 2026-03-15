@@ -3,6 +3,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { MainLayout } from '../layouts/MainLayout';
+import { fromServer, fmtDate } from '../utils/dates';
 import { userApi } from '../api';
 import { User, UserCreate, UserRole } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -305,7 +306,7 @@ export const UsersPage: React.FC = () => {
                       {user.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td>{new Date(user.created_at).toLocaleDateString()}</td>
+                  <td>{fmtDate(fromServer(user.created_at))}</td>
                   <td>
                     <div className="table-actions">
                       {canEdit && (

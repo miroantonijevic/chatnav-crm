@@ -29,6 +29,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         <div className="nav-links">
           <NavLink to="/dashboard">Dashboard</NavLink>
           <NavLink to="/contacts">Contacts</NavLink>
+          <NavLink to="/companies">Companies</NavLink>
           {user?.role === UserRole.ADMIN && (
             <>
               <NavLink to="/users">Users</NavLink>

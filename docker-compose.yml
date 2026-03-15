@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -15,8 +13,6 @@ services:
       - ./backend/.env
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./data/crm.db
-    depends_on:
-      - mailhog
     restart: unless-stopped
 
   frontend:
@@ -33,14 +29,6 @@ services:
       - VITE_API_URL=http://localhost:8000
     depends_on:
       - backend
-    restart: unless-stopped
-
-  mailhog:
-    image: mailhog/mailhog:latest
-    container_name: crm-mailhog
-    ports:
-      - "1025:1025"  # SMTP server
-      - "8025:8025"  # Web UI
     restart: unless-stopped
 
 volumes:

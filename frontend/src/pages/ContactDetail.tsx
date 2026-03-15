@@ -4,10 +4,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '../layouts/MainLayout';
-import { contactApi, userApi } from '../api';
-import { Contact, ContactCreate, HistoryEntry, HistoryCreate, RelationshipStatus, User } from '../types';
+import { contactApi, userApi, companyApi } from '../api';
+import { Contact, ContactCreate, ContactContactDetailCreate, HistoryEntry, HistoryCreate, RelationshipStatus, User, CompanyListItem } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import './Contacts.css';
+import { fromServer, fmtDateTime, localNow, toInputLocal, dtDate, dtTime, dtCombine } from '../utils/dates';
 
 const ENTRY_TYPE_LABEL: Record<string, string> = {
   created: 'Contact created',
@@ -33,6 +34,7 @@ export const ContactDetailPage: React.FC = () => {
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [users, setUsers] = useState<User[]>([]);
+  const [companies, setCompanies] = useState<CompanyListItem[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -43,7 +45,7 @@ export const ContactDetailPage: React.FC = () => {
   const [logFormData, setLogFormData] = useState<HistoryCreate>({
     status: RelationshipStatus.CONTACTED,
     note: '',
-    interaction_at: new Date().toISOString().slice(0, 16),
+    interaction_at: localNow(),
     next_contact_due_at: '',
   });
   const [logError, setLogError] = useState('');
@@ -52,18 +54,37 @@ export const ContactDetailPage: React.FC = () => {
   const [formData, setFormData] = useState<ContactCreate>({
     first_name: '',
     last_name: '',
-    company: '',
+    company_id: undefined,
     job_title: '',
-    email: '',
-    phone: '',
     notes: '',
     current_relationship_status: RelationshipStatus.NEW,
     reminders_enabled: true,
     owner_user_id: user?.id,
   });
 
+  type DetailRow = { _idx: number; value: string; label: string };
+  type DetailsForm = Record<'email' | 'phone', DetailRow[]>;
+  const [detailsForm, setDetailsForm] = useState<DetailsForm>({ email: [], phone: [] });
+  const [detailCounter, setDetailCounter] = useState(0);
+
+  const addDetailRow = (type: 'email' | 'phone') => {
+    const idx = detailCounter;
+    setDetailCounter((c: number) => c + 1);
+    setDetailsForm((prev: DetailsForm) => ({ ...prev, [type]: [...prev[type], { _idx: idx, value: '', label: '' }] }));
+  };
+  const removeDetailRow = (type: 'email' | 'phone', idx: number) => {
+    setDetailsForm((prev: DetailsForm) => ({ ...prev, [type]: prev[type].filter((r: DetailRow) => r._idx !== idx) }));
+  };
+  const updateDetailRow = (type: 'email' | 'phone', idx: number, field: 'value' | 'label', val: string) => {
+    setDetailsForm((prev: DetailsForm) => ({
+      ...prev,
+      [type]: prev[type].map((r: DetailRow) => r._idx === idx ? { ...r, [field]: val } : r),
+    }));
+  };
+
   useEffect(() => {
     loadUsers();
+    loadCompanies();
   }, []);
 
   useEffect(() => {
@@ -88,6 +109,15 @@ export const ContactDetailPage: React.FC = () => {
     }
   };
 
+  const loadCompanies = async () => {
+    try {
+      const data = await companyApi.listSimple();
+      setCompanies(data);
+    } catch (err: any) {
+      console.error('Failed to load companies:', err);
+    }
+  };
+
   const loadContact = async () => {
     if (!id || id === 'new') return;
     try {
@@ -96,17 +126,20 @@ export const ContactDetailPage: React.FC = () => {
       setFormData({
         first_name: data.first_name,
         last_name: data.last_name,
-        company: data.company || '',
+        company_id: data.company_id,
         job_title: data.job_title || '',
-        email: data.email || '',
-        phone: data.phone || '',
         notes: data.notes || '',
         current_relationship_status: data.current_relationship_status,
-        last_contacted_at: data.last_contacted_at,
-        next_contact_due_at: data.next_contact_due_at,
+        last_contacted_at: data.last_contacted_at ? toInputLocal(data.last_contacted_at) : undefined,
+        next_contact_due_at: data.next_contact_due_at ? toInputLocal(data.next_contact_due_at) : undefined,
         reminders_enabled: data.reminders_enabled,
         owner_user_id: data.owner_user_id,
       });
+      let counter = 0;
+      const toRows = (type: 'email' | 'phone') =>
+        data.contact_details.filter((d) => d.type === type).map((d) => ({ _idx: counter++, value: d.value, label: d.label || '' }));
+      setDetailsForm({ email: toRows('email'), phone: toRows('phone') });
+      setDetailCounter(counter);
       // Pre-fill log form status from current contact status
       setLogFormData((prev: HistoryCreate) => ({ ...prev, status: data.current_relationship_status }));
     } catch (err: any) {
@@ -130,11 +163,25 @@ export const ContactDetailPage: React.FC = () => {
     e.preventDefault();
     setError('');
     try {
+      const contact_details: ContactContactDetailCreate[] = [
+        ...detailsForm.email.filter((r: DetailRow) => r.value).map((r: DetailRow) => ({ type: 'email' as const, value: r.value, label: r.label || undefined })),
+        ...detailsForm.phone.filter((r: DetailRow) => r.value).map((r: DetailRow) => ({ type: 'phone' as const, value: r.value, label: r.label || undefined })),
+      ];
+      const payload = {
+        ...formData,
+        next_contact_due_at: formData.next_contact_due_at
+          ? new Date(formData.next_contact_due_at).toISOString()
+          : undefined,
+        last_contacted_at: formData.last_contacted_at
+          ? new Date(formData.last_contacted_at).toISOString()
+          : undefined,
+        contact_details,
+      };
       if (id === 'new') {
-        await contactApi.create(formData);
+        await contactApi.create(payload);
         navigate('/contacts');
       } else {
-        await contactApi.update(parseInt(id!), formData);
+        await contactApi.update(parseInt(id!), payload);
         setEditing(false);
         await loadContact();
         await loadHistory();
@@ -170,7 +217,7 @@ export const ContactDetailPage: React.FC = () => {
       setLogFormData({
         status: RelationshipStatus.CONTACTED,
         note: '',
-        interaction_at: new Date().toISOString().slice(0, 16),
+        interaction_at: localNow(),
         next_contact_due_at: '',
       });
       // Reload both contact (status/date may have changed) and history
@@ -256,7 +303,7 @@ export const ContactDetailPage: React.FC = () => {
 
             <div className="form-row">
               <div className="form-group">
-                <label htmlFor="owner_user_id">Contact Owner *</label>
+                <label htmlFor="owner_user_id">Relationship Owner *</label>
                 <select
                   id="owner_user_id"
                   value={formData.owner_user_id || ''}
@@ -289,13 +336,17 @@ export const ContactDetailPage: React.FC = () => {
 
             <div className="form-row">
               <div className="form-group">
-                <label htmlFor="company">Company</label>
-                <input
-                  id="company"
-                  type="text"
-                  value={formData.company}
-                  onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                />
+                <label htmlFor="company_id">Company</label>
+                <select
+                  id="company_id"
+                  value={formData.company_id ?? ''}
+                  onChange={(e) => setFormData({ ...formData, company_id: e.target.value ? parseInt(e.target.value) : undefined })}
+                >
+                  <option value="">— No company —</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
               </div>
               <div className="form-group">
                 <label htmlFor="job_title">Job Title</label>
@@ -308,39 +359,57 @@ export const ContactDetailPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="email">Email</label>
-                <input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="phone">Phone</label>
-                <input
-                  id="phone"
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                />
-              </div>
-            </div>
+            {(['email', 'phone'] as const).map((type) => {
+              const rows = detailsForm[type];
+              const inputType = type === 'email' ? 'email' : 'tel';
+              const placeholder = type === 'email' ? 'e.g. john@example.com' : 'e.g. +386 1 234 5678';
+              return (
+                <div key={type} style={{ marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <label style={{ fontWeight: 600, fontSize: '0.875rem', color: '#2c3e50' }}>
+                      {type === 'email' ? 'Emails' : 'Phones'}
+                    </label>
+                    <button type="button" onClick={() => addDetailRow(type)} className="btn-primary-inline" style={{ padding: '0.35rem 0.75rem', fontSize: '0.875rem' }}>
+                      + Add {type}
+                    </button>
+                  </div>
+                  {rows.length === 0 && <p style={{ color: '#888', fontSize: '0.875rem', margin: 0 }}>No {type}s added yet.</p>}
+                  {rows.map((detail: DetailRow) => (
+                    <div key={detail._idx} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', marginBottom: '0.5rem' }}>
+                      <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                        <input type={inputType} value={detail.value} placeholder={placeholder}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateDetailRow(type, detail._idx, 'value', e.target.value)} />
+                      </div>
+                      <div className="form-group" style={{ flex: '0 0 140px', marginBottom: 0 }}>
+                        <input type="text" value={detail.label} placeholder="Label (optional)"
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateDetailRow(type, detail._idx, 'label', e.target.value)} />
+                      </div>
+                      <button type="button" onClick={() => removeDetailRow(type, detail._idx)}
+                        className="btn-remove" style={{ alignSelf: 'center', marginBottom: 0 }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
 
             <div className="form-group">
-              <label htmlFor="next_contact_due_at">Next Follow-up Date</label>
-              <input
-                id="next_contact_due_at"
-                type="datetime-local"
-                value={
-                  formData.next_contact_due_at
-                    ? new Date(formData.next_contact_due_at).toISOString().slice(0, 16)
-                    : ''
-                }
-                onChange={(e) => setFormData({ ...formData, next_contact_due_at: e.target.value })}
-              />
+              <label htmlFor="next_contact_due_at_date">Next Follow-up Date</label>
+              <div className="datetime-split">
+                <input
+                  id="next_contact_due_at_date"
+                  type="date"
+                  value={formData.next_contact_due_at ? dtDate(formData.next_contact_due_at) : ''}
+                  onChange={(e) => setFormData({ ...formData, next_contact_due_at: dtCombine(e.target.value, formData.next_contact_due_at ? dtTime(formData.next_contact_due_at) : '09:30') })}
+                />
+                <input
+                  type="time"
+                  value={formData.next_contact_due_at ? dtTime(formData.next_contact_due_at) : '09:30'}
+                  onChange={(e) => {
+                    const date = formData.next_contact_due_at ? dtDate(formData.next_contact_due_at) : '';
+                    setFormData({ ...formData, next_contact_due_at: date ? dtCombine(date, e.target.value) : '' });
+                  }}
+                />
+              </div>
             </div>
 
             <div className="form-group">
@@ -353,199 +422,236 @@ export const ContactDetailPage: React.FC = () => {
               />
             </div>
 
-            <div className="form-group">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={formData.reminders_enabled}
-                  onChange={(e) => setFormData({ ...formData, reminders_enabled: e.target.checked })}
-                />
-                Enable reminders for this contact
-              </label>
-            </div>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={formData.reminders_enabled}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, reminders_enabled: e.target.checked })}
+              />
+              Enable reminders for this contact
+            </label>
           </form>
         ) : (
-          <>
-            {/* Contact info card */}
-            <div className="contact-info">
-              <div className="info-section">
-                <h2>Contact Information</h2>
-                <div className="info-grid">
-                  <div className="info-item">
-                    <label>Name</label>
-                    <span>{contact?.first_name} {contact?.last_name}</span>
-                  </div>
-                  <div className="info-item">
-                    <label>Company</label>
-                    <span>{contact?.company || '-'}</span>
-                  </div>
-                  <div className="info-item">
-                    <label>Job Title</label>
-                    <span>{contact?.job_title || '-'}</span>
-                  </div>
-                  <div className="info-item">
-                    <label>Contact Owner</label>
-                    <span className="owner-info" title={contact?.owner_email}>
-                      {contact?.owner_full_name}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <label>Created By</label>
-                    <span className="owner-info" title={contact?.created_by_email}>
-                      {contact?.created_by_full_name}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <label>Email</label>
-                    <span>{contact?.email || '-'}</span>
-                  </div>
-                  <div className="info-item">
-                    <label>Phone</label>
-                    <span>{contact?.phone || '-'}</span>
-                  </div>
-                  <div className="info-item">
-                    <label>Status</label>
-                    <span className="status-badge">{STATUS_LABELS[contact?.current_relationship_status ?? ''] ?? contact?.current_relationship_status}</span>
-                  </div>
-                  <div className="info-item">
-                    <label>Next Follow-up</label>
-                    <span>
-                      {contact?.next_contact_due_at
-                        ? new Date(contact.next_contact_due_at).toLocaleString()
-                        : '-'}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <label>Reminders</label>
-                    <span>{contact?.reminders_enabled ? 'Enabled' : 'Disabled'}</span>
-                  </div>
+          <div className="detail-layout">
+            {/* Timeline — left/main column */}
+            <div className="detail-main">
+              <div className="timeline-section">
+                <div className="timeline-section-header">
+                  <h2>Activity Timeline</h2>
+                  <button
+                    className="btn-primary-inline"
+                    onClick={() => {
+                      setLogFormData({
+                        status: contact?.current_relationship_status ?? RelationshipStatus.CONTACTED,
+                        note: '',
+                        interaction_at: localNow(),
+                        next_contact_due_at: '',
+                      });
+                      setLogError('');
+                      setShowLogForm((v: boolean) => !v);
+                    }}
+                  >
+                    {showLogForm ? 'Cancel' : '+ Log Interaction'}
+                  </button>
                 </div>
-              </div>
 
-              {contact?.notes && (
-                <div className="info-section">
-                  <h2>Notes</h2>
-                  <p className="notes-content">{contact.notes}</p>
-                </div>
-              )}
-            </div>
+                {showLogForm && (
+                  <form className="log-interaction-form" onSubmit={handleLogInteraction}>
+                    {logError && <div className="error-message">{logError}</div>}
 
-            {/* Timeline section */}
-            <div className="timeline-section">
-              <div className="timeline-section-header">
-                <h2>Activity Timeline</h2>
-                <button
-                  className="btn-primary-inline"
-                  onClick={() => {
-                    setLogFormData({
-                      status: contact?.current_relationship_status ?? RelationshipStatus.CONTACTED,
-                      note: '',
-                      interaction_at: new Date().toISOString().slice(0, 16),
-                      next_contact_due_at: '',
-                    });
-                    setLogError('');
-                    setShowLogForm((v: boolean) => !v);
-                  }}
-                >
-                  {showLogForm ? 'Cancel' : '+ Log Interaction'}
-                </button>
-              </div>
-
-              {showLogForm && (
-                <form className="log-interaction-form" onSubmit={handleLogInteraction}>
-                  {logError && <div className="error-message">{logError}</div>}
-
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label htmlFor="log_status">Status after interaction</label>
-                      <select
-                        id="log_status"
-                        value={logFormData.status}
-                        onChange={(e) =>
-                          setLogFormData({ ...logFormData, status: e.target.value as RelationshipStatus })
-                        }
-                      >
-                        {Object.values(RelationshipStatus).map((s) => (
-                          <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
-                        ))}
-                      </select>
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label htmlFor="log_status">Status after interaction</label>
+                        <select
+                          id="log_status"
+                          value={logFormData.status}
+                          onChange={(e) =>
+                            setLogFormData({ ...logFormData, status: e.target.value as RelationshipStatus })
+                          }
+                        >
+                          {Object.values(RelationshipStatus).map((s) => (
+                            <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label htmlFor="log_date">Interaction date</label>
+                        <div className="datetime-split">
+                          <input
+                            id="log_date"
+                            type="date"
+                            value={dtDate(logFormData.interaction_at)}
+                            onChange={(e) => setLogFormData({ ...logFormData, interaction_at: dtCombine(e.target.value, dtTime(logFormData.interaction_at)) })}
+                            required
+                          />
+                          <input
+                            type="time"
+                            value={dtTime(logFormData.interaction_at)}
+                            onChange={(e) => setLogFormData({ ...logFormData, interaction_at: dtCombine(dtDate(logFormData.interaction_at), e.target.value) })}
+                          />
+                        </div>
+                      </div>
                     </div>
+
                     <div className="form-group">
-                      <label htmlFor="log_date">Interaction date</label>
-                      <input
-                        id="log_date"
-                        type="datetime-local"
-                        value={logFormData.interaction_at}
-                        onChange={(e) => setLogFormData({ ...logFormData, interaction_at: e.target.value })}
-                        required
+                      <label htmlFor="log_followup">Next follow-up date (optional — updates the contact)</label>
+                      <div className="datetime-split">
+                        <input
+                          id="log_followup"
+                          type="date"
+                          value={dtDate(logFormData.next_contact_due_at ?? '')}
+                          onChange={(e) => setLogFormData({ ...logFormData, next_contact_due_at: dtCombine(e.target.value, dtTime(logFormData.next_contact_due_at ?? '')) })}
+                        />
+                        <input
+                          type="time"
+                          value={dtTime(logFormData.next_contact_due_at ?? '')}
+                          onChange={(e) => {
+                            const date = dtDate(logFormData.next_contact_due_at ?? '');
+                            setLogFormData({ ...logFormData, next_contact_due_at: date ? dtCombine(date, e.target.value) : '' });
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="log_note">Note</label>
+                      <textarea
+                        id="log_note"
+                        value={logFormData.note ?? ''}
+                        onChange={(e) => setLogFormData({ ...logFormData, note: e.target.value })}
+                        placeholder="What happened? e.g. Had a call, sent proposal, met at conference..."
+                        rows={3}
                       />
                     </div>
-                  </div>
 
-                  <div className="form-group">
-                    <label htmlFor="log_followup">Next follow-up date (optional — updates the contact)</label>
-                    <input
-                      id="log_followup"
-                      type="datetime-local"
-                      value={logFormData.next_contact_due_at ?? ''}
-                      onChange={(e) => setLogFormData({ ...logFormData, next_contact_due_at: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="log_note">Note</label>
-                    <textarea
-                      id="log_note"
-                      value={logFormData.note ?? ''}
-                      onChange={(e) => setLogFormData({ ...logFormData, note: e.target.value })}
-                      placeholder="What happened? e.g. Had a call, sent proposal, met at conference..."
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="form-actions">
-                    <button type="submit" className="btn-primary-inline" disabled={logSaving}>
-                      {logSaving ? 'Saving...' : 'Save Interaction'}
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {history.length === 0 ? (
-                <p className="empty-message">No activity yet.</p>
-              ) : (
-                <div className="timeline">
-                  {history.map((entry) => (
-                    <div key={entry.id} className={`timeline-item entry-${entry.entry_type}`}>
-                      <div className="timeline-header">
-                        <span className="timeline-type">{ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}</span>
-                        <span className="timeline-separator">·</span>
-                        <span className="timeline-date">
-                          {new Date(entry.interaction_at).toLocaleString()}
-                        </span>
-                        <span className="timeline-separator">·</span>
-                        <span className="timeline-by">by {entry.changed_by_full_name}</span>
-                      </div>
-
-                      <span className="timeline-status">
-                        {STATUS_LABELS[entry.status] ?? entry.status}
-                      </span>
-
-                      {entry.note && (
-                        <p className="timeline-note">{entry.note}</p>
-                      )}
-
-                      {entry.next_contact_due_at && (
-                        <p className="timeline-followup">
-                          Next follow-up: {new Date(entry.next_contact_due_at).toLocaleString()}
-                        </p>
-                      )}
+                    <div className="form-actions">
+                      <button type="submit" className="btn-primary-inline" disabled={logSaving}>
+                        {logSaving ? 'Saving...' : 'Save Interaction'}
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </form>
+                )}
+
+                {history.length === 0 ? (
+                  <p className="empty-message">No activity yet.</p>
+                ) : (
+                  <div className="timeline">
+                    {history.map((entry) => {
+                      const recordedAt = fromServer(entry.created_at);
+                      const happenedAt = fromServer(entry.interaction_at);
+                      const showHappenedOn =
+                        entry.entry_type === 'interaction' &&
+                        recordedAt.getTime() - happenedAt.getTime() > 5 * 60 * 1000;
+
+                      return (
+                        <div key={entry.id} className={`timeline-item entry-${entry.entry_type}`}>
+                          <div className="timeline-header">
+                            <span className="timeline-type">{ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}</span>
+                            <span className="timeline-separator">·</span>
+                            <span className="timeline-date">{fmtDateTime(recordedAt)}</span>
+                            <span className="timeline-separator">·</span>
+                            <span className="timeline-by">by {entry.changed_by_full_name}</span>
+                          </div>
+
+                          <span className="timeline-status">
+                            {STATUS_LABELS[entry.status] ?? entry.status}
+                          </span>
+
+                          {showHappenedOn && (
+                            <p className="timeline-happened-on">
+                              Happened on: {fmtDateTime(happenedAt)}
+                            </p>
+                          )}
+
+                          {entry.note && (
+                            <p className="timeline-note">{entry.note}</p>
+                          )}
+
+                          {entry.next_contact_due_at && (
+                            <p className="timeline-followup">
+                              Next follow-up: {fmtDateTime(fromServer(entry.next_contact_due_at))}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
-          </>
+
+            {/* Info panel — right/sidebar column */}
+            <div className="detail-sidebar">
+              <div className="contact-info">
+                <h2>Contact Information</h2>
+                <div className="info-grid">
+                    <div className="info-item">
+                      <label>Name</label>
+                      <span>{contact?.first_name} {contact?.last_name}</span>
+                    </div>
+                    <div className="info-item">
+                      <label>Company</label>
+                      <span>{contact?.company_name || '-'}</span>
+                    </div>
+                    <div className="info-item">
+                      <label>Job Title</label>
+                      <span>{contact?.job_title || '-'}</span>
+                    </div>
+                    <div className="info-item">
+                      <label>Relationship Owner</label>
+                      <span className="owner-info" title={contact?.owner_email}>
+                        {contact?.owner_full_name}
+                      </span>
+                    </div>
+                    <div className="info-item">
+                      <label>Created By</label>
+                      <span className="owner-info" title={contact?.created_by_email}>
+                        {contact?.created_by_full_name}
+                      </span>
+                    </div>
+                    {(['email', 'phone'] as const).map((type) => {
+                      const items = contact?.contact_details.filter((d: { type: string }) => d.type === type) ?? [];
+                      if (items.length === 0) return null;
+                      return (
+                        <div className="info-item" key={type}>
+                          <label>{type === 'email' ? 'Emails' : 'Phones'}</label>
+                          <div className="detail-chips">
+                            {items.map((d: { id: number; value: string; label?: string }) => (
+                              <span className="detail-chip" key={d.id} title={d.label || undefined}>
+                                {d.value}{d.label ? <em> ({d.label})</em> : null}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="info-item">
+                      <label>Status</label>
+                      <span className="status-badge">{STATUS_LABELS[contact?.current_relationship_status ?? ''] ?? contact?.current_relationship_status}</span>
+                    </div>
+                    <div className="info-item">
+                      <label>Next Follow-up</label>
+                      <span>
+                        {contact?.next_contact_due_at
+                          ? fmtDateTime(fromServer(contact.next_contact_due_at))
+                          : '-'}
+                      </span>
+                    </div>
+                    <div className="info-item">
+                      <label>Reminders</label>
+                      <span>{contact?.reminders_enabled ? 'Enabled' : 'Disabled'}</span>
+                    </div>
+                  </div>
+
+                {contact?.notes && (
+                  <div className="sidebar-notes">
+                    <h2>Notes</h2>
+                    <p className="notes-content">{contact.notes}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </MainLayout>

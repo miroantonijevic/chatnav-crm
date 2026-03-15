@@ -1,13 +1,23 @@
 """
 Main FastAPI application entry point
 """
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+logging.getLogger("app").setLevel(logging.INFO)
+
+# Ensure app loggers have a handler (uvicorn does not add one to the root logger)
+_app_logger = logging.getLogger("app")
+if not _app_logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s %(name)s - %(message)s"))
+    _app_logger.addHandler(_handler)
 
 from app.core.config import settings
 from app.core.bootstrap import create_admin_user
 from app.db.session import AsyncSessionLocal
-from app.api import auth, users, contacts, reminders
+from app.api import auth, users, contacts, reminders, companies
 from app.jobs.reminder_scheduler import reminder_scheduler
 
 app = FastAPI(
@@ -30,6 +40,7 @@ app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 app.include_router(users.router, prefix=settings.API_V1_PREFIX)
 app.include_router(contacts.router, prefix=settings.API_V1_PREFIX)
 app.include_router(reminders.router, prefix=settings.API_V1_PREFIX)
+app.include_router(companies.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.on_event("startup")

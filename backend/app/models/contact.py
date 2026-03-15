@@ -10,6 +10,18 @@ import enum
 from app.db.session import Base
 
 
+class ContactContactDetail(Base):
+    __tablename__ = "contact_contact_details"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    contact_id: Mapped[int] = mapped_column(Integer, ForeignKey("contacts.id"), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)  # 'email' | 'phone'
+    value: Mapped[str] = mapped_column(String(500), nullable=False)
+    label: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    contact = relationship("Contact", back_populates="contact_details")
+
+
 class RelationshipStatus(str, enum.Enum):
     NEW = "new"
     CONTACTED = "contacted"
@@ -26,7 +38,7 @@ class Contact(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     first_name: Mapped[str] = mapped_column(String(255), nullable=False)
     last_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    company: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
     job_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -57,6 +69,8 @@ class Contact(Base):
     created_by = relationship("User", foreign_keys=[created_by_user_id])
     history = relationship("RelationshipHistory", back_populates="contact", cascade="all, delete-orphan")
     reminder_logs = relationship("ReminderLog", back_populates="contact", cascade="all, delete-orphan")
+    company = relationship("Company", back_populates="contacts", foreign_keys=[company_id])
+    contact_details = relationship("ContactContactDetail", back_populates="contact", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Contact(id={self.id}, name={self.first_name} {self.last_name}, status={self.current_relationship_status})>"

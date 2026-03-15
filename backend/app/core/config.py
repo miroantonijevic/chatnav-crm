@@ -28,17 +28,16 @@ class Settings(BaseSettings):
     ADMIN_FULL_NAME: str = "System Admin"
 
     # SMTP Configuration
-    SMTP_HOST: str = "localhost"
-    SMTP_PORT: int = 1025
+    SMTP_HOST: str = "smtp.zoho.eu"
+    SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
-    SMTP_FROM_EMAIL: str = "crm@example.com"
-    SMTP_USE_TLS: bool = False
+    SMTP_FROM_EMAIL: str = "noreply@chatnav.ai"
+    SMTP_START_TLS: bool = True
 
     # Reminders
     REMINDERS_ENABLED: bool = True
     REMINDER_CHECK_INTERVAL_MINUTES: int = 60
-    REMINDER_LEAD_TIME_MINUTES: int = 60
 
     @field_validator("CORS_ORIGINS")
     @classmethod

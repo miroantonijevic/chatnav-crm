@@ -1,6 +1,7 @@
 """
 Background job scheduler for reminders
 """
+import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.services.reminder_service import ReminderService
+
+logger = logging.getLogger(__name__)
 
 
 class ReminderScheduler:
@@ -25,18 +28,18 @@ class ReminderScheduler:
         async with AsyncSessionLocal() as db:
             try:
                 result = await ReminderService.check_and_send_reminders(db)
-                print(f"Reminder check completed: {result}")
+                logger.info("Reminder job finished: %s", result)
             except Exception as e:
-                print(f"Error in reminder check job: {e}")
+                logger.error("Unhandled error in reminder check job: %s", e, exc_info=True)
 
     def start(self):
         """Start the scheduler"""
         if self.is_running:
-            print("Reminder scheduler is already running")
+            logger.warning("Reminder scheduler is already running")
             return
 
         if not settings.REMINDERS_ENABLED:
-            print("Reminders are disabled, scheduler will not start")
+            logger.info("Reminders are disabled, scheduler will not start")
             return
 
         # Add job to run at specified interval
@@ -50,14 +53,14 @@ class ReminderScheduler:
 
         self.scheduler.start()
         self.is_running = True
-        print(f"Reminder scheduler started (interval: {settings.REMINDER_CHECK_INTERVAL_MINUTES} minutes)")
+        logger.info("Reminder scheduler started (interval: %d minute(s))", settings.REMINDER_CHECK_INTERVAL_MINUTES)
 
     def shutdown(self):
         """Shutdown the scheduler"""
         if self.is_running:
             self.scheduler.shutdown()
             self.is_running = False
-            print("Reminder scheduler stopped")
+            logger.info("Reminder scheduler stopped")
 
 
 # Global scheduler instance

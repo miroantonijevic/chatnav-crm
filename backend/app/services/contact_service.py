@@ -3,11 +3,12 @@ Contact service for business logic
 """
 from typing import List, Optional
 from datetime import datetime, timezone
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_, and_, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.models.contact import Contact, RelationshipStatus
+from app.models.contact import Contact, ContactContactDetail, RelationshipStatus
+from app.models.company import Company
 from app.models.user import User, UserRole
 from app.schemas.contact import ContactCreate, ContactUpdate
 from app.services.history_service import HistoryService
@@ -21,11 +22,13 @@ class ContactService:
         """Get contact by ID - all users can view all contacts"""
         query = select(Contact).options(
             joinedload(Contact.owner),
-            joinedload(Contact.created_by)
+            joinedload(Contact.created_by),
+            joinedload(Contact.contact_details),
+            joinedload(Contact.company)
         ).where(Contact.id == contact_id)
 
         result = await db.execute(query)
-        return result.scalar_one_or_none()
+        return result.unique().scalar_one_or_none()
 
     @staticmethod
     async def get_all(
@@ -41,17 +44,45 @@ class ContactService:
         """Get all contacts with filtering and pagination - all users can see all contacts"""
         query = select(Contact).options(
             joinedload(Contact.owner),
-            joinedload(Contact.created_by)
+            joinedload(Contact.created_by),
+            joinedload(Contact.contact_details),
+            joinedload(Contact.company)
         )
 
         if search:
             search_pattern = f"%{search}%"
+            owner_matches = exists().where(
+                and_(
+                    User.id == Contact.owner_user_id,
+                    or_(User.full_name.ilike(search_pattern), User.email.ilike(search_pattern))
+                )
+            )
+            created_by_matches = exists().where(
+                and_(
+                    User.id == Contact.created_by_user_id,
+                    or_(User.full_name.ilike(search_pattern), User.email.ilike(search_pattern))
+                )
+            )
+            company_matches = exists().where(
+                and_(
+                    Company.id == Contact.company_id,
+                    Company.name.ilike(search_pattern)
+                )
+            )
+            detail_matches = exists().where(
+                and_(
+                    ContactContactDetail.contact_id == Contact.id,
+                    ContactContactDetail.value.ilike(search_pattern)
+                )
+            )
             query = query.where(
                 or_(
                     Contact.first_name.ilike(search_pattern),
                     Contact.last_name.ilike(search_pattern),
-                    Contact.company.ilike(search_pattern),
-                    Contact.email.ilike(search_pattern)
+                    owner_matches,
+                    created_by_matches,
+                    company_matches,
+                    detail_matches,
                 )
             )
 
@@ -92,7 +123,7 @@ class ContactService:
         db_contact = Contact(
             first_name=contact_create.first_name,
             last_name=contact_create.last_name,
-            company=contact_create.company,
+            company_id=contact_create.company_id,
             job_title=contact_create.job_title,
             email=contact_create.email,
             phone=contact_create.phone,
@@ -106,7 +137,15 @@ class ContactService:
         )
 
         db.add(db_contact)
-        await db.flush()  # Get the ID without committing
+        await db.flush()
+
+        for detail in contact_create.contact_details:
+            db.add(ContactContactDetail(
+                contact_id=db_contact.id,
+                type=detail.type,
+                value=detail.value,
+                label=detail.label,
+            ))
 
         HistoryService.add_system_event(
             db,
@@ -123,10 +162,12 @@ class ContactService:
         result = await db.execute(
             select(Contact).options(
                 joinedload(Contact.owner),
-                joinedload(Contact.created_by)
+                joinedload(Contact.created_by),
+                joinedload(Contact.contact_details),
+                joinedload(Contact.company)
             ).where(Contact.id == db_contact.id)
         )
-        return result.scalar_one()
+        return result.unique().scalar_one()
 
     @staticmethod
     async def update(
@@ -137,9 +178,21 @@ class ContactService:
     ) -> Contact:
         """Update a contact and auto-log an 'edited' history entry"""
         update_data = contact_update.model_dump(exclude_unset=True)
+        contact_details = update_data.pop('contact_details', None)
 
         for field, value in update_data.items():
             setattr(contact, field, value)
+
+        if contact_details is not None:
+            for existing in list(contact.contact_details):
+                await db.delete(existing)
+            for detail in contact_details:
+                db.add(ContactContactDetail(
+                    contact_id=contact.id,
+                    type=detail['type'],
+                    value=detail['value'],
+                    label=detail.get('label'),
+                ))
 
         HistoryService.add_system_event(
             db,
@@ -156,10 +209,12 @@ class ContactService:
         result = await db.execute(
             select(Contact).options(
                 joinedload(Contact.owner),
-                joinedload(Contact.created_by)
+                joinedload(Contact.created_by),
+                joinedload(Contact.contact_details),
+                joinedload(Contact.company)
             ).where(Contact.id == contact.id)
         )
-        return result.scalar_one()
+        return result.unique().scalar_one()
 
     @staticmethod
     async def delete(db: AsyncSession, contact: Contact) -> None:
@@ -178,7 +233,8 @@ class ContactService:
             )
         ).options(
             joinedload(Contact.owner),
-            joinedload(Contact.created_by)
+            joinedload(Contact.created_by),
+            joinedload(Contact.company),
         )
 
         result = await db.execute(query)

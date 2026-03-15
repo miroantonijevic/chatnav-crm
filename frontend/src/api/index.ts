@@ -15,6 +15,12 @@ import type {
   HistoryEntry,
   HistoryCreate,
   ReminderStats,
+  Company,
+  CompanyListItem,
+  CompanyCreate,
+  CompanyUpdate,
+  CompanyHistoryEntry,
+  CompanyHistoryCreate,
 } from '../types';
 
 // Auth endpoints
@@ -63,6 +69,27 @@ export const contactApi = {
   getHistory: (id: number) => apiClient.get<HistoryEntry[]>(`/contacts/${id}/history`),
   addHistory: (id: number, data: HistoryCreate) =>
     apiClient.post<HistoryEntry>(`/contacts/${id}/history`, data),
+};
+
+// Company endpoints
+export const companyApi = {
+  list: (params?: { search?: string; due_only?: boolean; upcoming_only?: boolean; limit?: number }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.due_only) queryParams.append('due_only', 'true');
+    if (params?.upcoming_only) queryParams.append('upcoming_only', 'true');
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    const query = queryParams.toString();
+    return apiClient.get<Company[]>(`/companies${query ? `?${query}` : ''}`);
+  },
+  listSimple: () => apiClient.get<CompanyListItem[]>('/companies/list/simple'),
+  create: (data: CompanyCreate) => apiClient.post<Company>('/companies', data),
+  get: (id: number) => apiClient.get<Company>(`/companies/${id}`),
+  update: (id: number, data: CompanyUpdate) => apiClient.put<Company>(`/companies/${id}`, data),
+  delete: (id: number) => apiClient.delete(`/companies/${id}`),
+  getHistory: (id: number) => apiClient.get<CompanyHistoryEntry[]>(`/companies/${id}/history`),
+  addHistory: (id: number, data: CompanyHistoryCreate) =>
+    apiClient.post<CompanyHistoryEntry>(`/companies/${id}/history`, data),
 };
 
 // Reminder endpoints

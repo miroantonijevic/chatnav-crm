@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '../layouts/MainLayout';
+import { fromServer, fmtDate } from '../utils/dates';
 import { contactApi } from '../api';
 import { Contact, RelationshipStatus } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -141,10 +142,10 @@ export const ContactsListPage: React.FC = () => {
                 <tr>
                   <th>Name</th>
                   <th>Company</th>
-                  <th>Contact Owner</th>
+                  <th>Relationship Owner</th>
                   <th>Created By</th>
-                  <th>Email</th>
-                  <th>Phone</th>
+                  <th>Emails</th>
+                  <th>Phones</th>
                   <th>Status</th>
                   <th>Next Follow-up</th>
                   <th>Actions</th>
@@ -158,7 +159,7 @@ export const ContactsListPage: React.FC = () => {
                         {contact.first_name} {contact.last_name}
                       </Link>
                     </td>
-                    <td>{contact.company || '-'}</td>
+                    <td>{contact.company_name || '-'}</td>
                     <td>
                       <span className="owner-badge" title={contact.owner_email}>
                         {contact.owner_full_name}
@@ -169,14 +170,22 @@ export const ContactsListPage: React.FC = () => {
                         {contact.created_by_full_name}
                       </span>
                     </td>
-                    <td>{contact.email || '-'}</td>
-                    <td>{contact.phone || '-'}</td>
+                    <td>
+                      {contact.contact_details.filter((d: { type: string }) => d.type === 'email').length > 0
+                        ? contact.contact_details.filter((d: { type: string }) => d.type === 'email').map((d: { value: string }) => d.value).join(', ')
+                        : '-'}
+                    </td>
+                    <td>
+                      {contact.contact_details.filter((d: { type: string }) => d.type === 'phone').length > 0
+                        ? contact.contact_details.filter((d: { type: string }) => d.type === 'phone').map((d: { value: string }) => d.value).join(', ')
+                        : '-'}
+                    </td>
                     <td>
                       <span className="status-badge">{contact.current_relationship_status}</span>
                     </td>
                     <td>
                       {contact.next_contact_due_at
-                        ? new Date(contact.next_contact_due_at).toLocaleDateString()
+                        ? fmtDate(fromServer(contact.next_contact_due_at))
                         : '-'}
                     </td>
                     <td>

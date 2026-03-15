@@ -6,6 +6,8 @@ import { ChangePasswordPage } from './pages/ChangePassword'
 import { DashboardPage } from './pages/Dashboard'
 import { ContactsListPage } from './pages/ContactsList'
 import { ContactDetailPage } from './pages/ContactDetail'
+import { CompaniesListPage } from './pages/CompaniesList'
+import { CompanyDetailPage } from './pages/CompanyDetail'
 import { UsersPage } from './pages/Users'
 import { RemindersPage } from './pages/Reminders'
 import './App.css'
@@ -41,6 +43,24 @@ function App() {
             element={
               <ProtectedRoute>
                 <ContactDetailPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/companies"
+            element={
+              <ProtectedRoute>
+                <CompaniesListPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/companies/:id"
+            element={
+              <ProtectedRoute>
+                <CompanyDetailPage />
               </ProtectedRoute>
             }
           />

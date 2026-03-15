@@ -2,6 +2,7 @@
 Reminder log model to track sent reminders and prevent duplicates
 """
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import Integer, ForeignKey, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,7 +13,8 @@ class ReminderLog(Base):
     __tablename__ = "reminder_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    contact_id: Mapped[int] = mapped_column(Integer, ForeignKey("contacts.id"), nullable=False, index=True)
+    contact_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("contacts.id"), nullable=True, index=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
 
     due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
@@ -20,6 +22,7 @@ class ReminderLog(Base):
 
     # Relationships
     contact = relationship("Contact", back_populates="reminder_logs")
+    company = relationship("Company", back_populates="reminder_logs")
 
     def __repr__(self):
-        return f"<ReminderLog(id={self.id}, contact_id={self.contact_id}, due_at={self.due_at})>"
+        return f"<ReminderLog(id={self.id}, contact_id={self.contact_id}, company_id={self.company_id}, due_at={self.due_at})>"

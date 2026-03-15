@@ -1,6 +1,7 @@
 """
 Email service for sending notifications
 """
+import logging
 import aiosmtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -8,19 +9,21 @@ from typing import List
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 class EmailService:
-    """Service for sending emails via SMTP"""
+    """Service for sending emails via Zoho SMTP"""
 
     @staticmethod
     async def send_email(
         to_emails: List[str],
         subject: str,
         body: str,
-        html_body: str = None
+        html_body: str = None,
     ) -> bool:
         """
-        Send an email to one or more recipients
+        Send an email to recipients.
 
         Args:
             to_emails: List of recipient email addresses
@@ -31,42 +34,33 @@ class EmailService:
         Returns:
             True if email was sent successfully, False otherwise
         """
+        if not settings.SMTP_HOST or not settings.SMTP_PORT:
+            logger.warning("SMTP not configured. Skipping email send.")
+            logger.debug("Subject: %s | To: %s", subject, ", ".join(to_emails))
+            return False
+
         try:
-            # Create message
-            message = MIMEMultipart("alternative")
-            message["From"] = settings.SMTP_FROM_EMAIL
-            message["To"] = ", ".join(to_emails)
-            message["Subject"] = subject
-
-            # Attach plain text body
-            text_part = MIMEText(body, "plain")
-            message.attach(text_part)
-
-            # Attach HTML body if provided
+            msg = MIMEMultipart("alternative")
+            msg["From"] = settings.SMTP_FROM_EMAIL
+            msg["To"] = ", ".join(to_emails)
+            msg["Subject"] = subject
+            msg.attach(MIMEText(body, "plain"))
             if html_body:
-                html_part = MIMEText(html_body, "html")
-                message.attach(html_part)
+                msg.attach(MIMEText(html_body, "html"))
 
-            # Send email
-            if settings.SMTP_HOST and settings.SMTP_PORT:
-                await aiosmtplib.send(
-                    message,
-                    hostname=settings.SMTP_HOST,
-                    port=settings.SMTP_PORT,
-                    username=settings.SMTP_USERNAME if settings.SMTP_USERNAME else None,
-                    password=settings.SMTP_PASSWORD if settings.SMTP_PASSWORD else None,
-                    use_tls=settings.SMTP_USE_TLS,
-                )
-                print(f"Email sent to: {', '.join(to_emails)}")
-                return True
-            else:
-                print(f"SMTP not configured. Would send email to: {', '.join(to_emails)}")
-                print(f"Subject: {subject}")
-                print(f"Body: {body}")
-                return False
+            await aiosmtplib.send(
+                msg,
+                hostname=settings.SMTP_HOST,
+                port=settings.SMTP_PORT,
+                username=settings.SMTP_USERNAME,
+                password=settings.SMTP_PASSWORD,
+                start_tls=settings.SMTP_START_TLS,
+            )
+            logger.info("Email sent successfully to %s", ", ".join(to_emails))
+            return True
 
         except Exception as e:
-            print(f"Error sending email: {e}")
+            logger.error("Failed to send email: %s", e)
             return False
 
     @staticmethod
@@ -77,16 +71,15 @@ class EmailService:
         due_date: str,
         owner_name: str,
         contact_id: int
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str]:
         """
-        Format a follow-up reminder email
+        Format a follow-up reminder email.
 
         Returns:
-            Tuple of (plain_text_body, html_body)
+            Tuple of (subject, plain_text_body, html_body)
         """
         subject = f"Follow-up Reminder: {contact_name}"
 
-        # Plain text version
         plain_body = f"""
 Follow-up Reminder
 
@@ -102,7 +95,6 @@ Contact ID: {contact_id}
 Please log into the CRM to review and update this contact.
 """
 
-        # HTML version
         html_body = f"""
 <!DOCTYPE html>
 <html>
@@ -124,32 +116,87 @@ Please log into the CRM to review and update this contact.
         </div>
         <div class="content">
             <p>A contact requires follow-up attention:</p>
-
-            <div class="field">
-                <span class="label">Contact:</span> {contact_name}
-            </div>
-            <div class="field">
-                <span class="label">Company:</span> {company or 'N/A'}
-            </div>
-            <div class="field">
-                <span class="label">Status:</span> {status}
-            </div>
-            <div class="field">
-                <span class="label">Due Date:</span> {due_date}
-            </div>
-            <div class="field">
-                <span class="label">Owner:</span> {owner_name}
-            </div>
-            <div class="field">
-                <span class="label">Contact ID:</span> {contact_id}
-            </div>
-
-            <p style="margin-top: 20px;">
-                Please log into the CRM to review and update this contact.
-            </p>
+            <div class="field"><span class="label">Contact:</span> {contact_name}</div>
+            <div class="field"><span class="label">Company:</span> {company or 'N/A'}</div>
+            <div class="field"><span class="label">Status:</span> {status}</div>
+            <div class="field"><span class="label">Due Date:</span> {due_date}</div>
+            <div class="field"><span class="label">Owner:</span> {owner_name}</div>
+            <div class="field"><span class="label">Contact ID:</span> {contact_id}</div>
+            <p style="margin-top: 20px;">Please log into the CRM to review and update this contact.</p>
         </div>
         <div class="footer">
-            <p>This is an automated message from your CRM system.</p>
+            <p>This is an automated message from {settings.PROJECT_NAME}.</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+        return subject, plain_body, html_body
+
+    @staticmethod
+    def format_company_reminder_email(
+        company_name: str,
+        industry: str,
+        status: str,
+        due_date: str,
+        owner_name: str,
+        company_id: int
+    ) -> tuple[str, str, str]:
+        """
+        Format a follow-up reminder email for a company.
+
+        Returns:
+            Tuple of (subject, plain_text_body, html_body)
+        """
+        subject = f"Follow-up Reminder: {company_name}"
+
+        plain_body = f"""
+Follow-up Reminder
+
+A company requires follow-up attention:
+
+Company: {company_name}
+Industry: {industry or 'N/A'}
+Status: {status}
+Due Date: {due_date}
+Owner: {owner_name}
+Company ID: {company_id}
+
+Please log into the CRM to review and update this company.
+"""
+
+        html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #2980b9; color: white; padding: 20px; text-align: center; }}
+        .content {{ background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; }}
+        .field {{ margin: 10px 0; }}
+        .label {{ font-weight: bold; }}
+        .footer {{ text-align: center; padding: 20px; color: #777; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Follow-up Reminder</h2>
+        </div>
+        <div class="content">
+            <p>A company requires follow-up attention:</p>
+            <div class="field"><span class="label">Company:</span> {company_name}</div>
+            <div class="field"><span class="label">Industry:</span> {industry or 'N/A'}</div>
+            <div class="field"><span class="label">Status:</span> {status}</div>
+            <div class="field"><span class="label">Due Date:</span> {due_date}</div>
+            <div class="field"><span class="label">Owner:</span> {owner_name}</div>
+            <div class="field"><span class="label">Company ID:</span> {company_id}</div>
+            <p style="margin-top: 20px;">Please log into the CRM to review and update this company.</p>
+        </div>
+        <div class="footer">
+            <p>This is an automated message from {settings.PROJECT_NAME}.</p>
         </div>
     </div>
 </body>

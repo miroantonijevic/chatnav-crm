@@ -18,14 +18,19 @@
   background-color: #667eea;
   color: white;
   padding: 0.75rem 1.5rem;
+  border: 1.5px solid #667eea;
   border-radius: 4px;
   text-decoration: none;
+  font-size: 1rem;
   font-weight: 500;
-  transition: background-color 0.2s;
+  cursor: pointer;
+  display: inline-block;
+  transition: background-color 0.2s, border-color 0.2s;
 }
 
 .btn-primary-inline:hover {
   background-color: #5568d3;
+  border-color: #5568d3;
 }
 
 .filters {
@@ -96,36 +101,56 @@
 
 .btn-secondary {
   padding: 0.75rem 1.5rem;
-  background-color: #95a5a6;
-  color: white;
-  border: none;
+  background-color: white;
+  color: #667eea;
+  border: 1.5px solid #667eea;
   border-radius: 4px;
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
   text-decoration: none;
   display: inline-block;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, color 0.2s;
 }
 
 .btn-secondary:hover {
-  background-color: #7f8c8d;
+  background-color: #f0f2ff;
 }
 
 .btn-danger {
   padding: 0.75rem 1.5rem;
   background-color: #e74c3c;
   color: white;
-  border: none;
+  border: 1.5px solid #e74c3c;
   border-radius: 4px;
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, border-color 0.2s;
 }
 
 .btn-danger:hover {
   background-color: #c0392b;
+  border-color: #c0392b;
+}
+
+/* Small icon-style remove button used in detail edit forms */
+.btn-remove {
+  padding: 0.3rem 0.6rem;
+  background-color: white;
+  color: #e74c3c;
+  border: 1.5px solid #e74c3c;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.btn-remove:hover {
+  background-color: #e74c3c;
+  color: white;
 }
 
 .table-actions {
@@ -162,6 +187,161 @@
   color: white;
 }
 
+/* ── Contact/Company detail: view mode layout ─────────────── */
+.contact-detail {
+  max-width: 1280px;
+}
+
+/* Two-column layout: timeline left, info sidebar right */
+.detail-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.detail-main .timeline-section {
+  margin-top: 0;
+}
+
+.detail-sidebar .contact-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+}
+
+.detail-sidebar .contact-info h2 {
+  font-size: 1rem;
+  color: #2c3e50;
+  margin: 0 0 1rem;
+}
+
+.detail-sidebar .sidebar-notes {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #f0f0f0;
+}
+
+@media (max-width: 900px) {
+  .detail-layout {
+    grid-template-columns: 1fr;
+  }
+  .detail-sidebar {
+    order: -1;
+  }
+}
+
+.contact-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.info-section {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+}
+
+.info-section h2 {
+  margin: 0 0 1.25rem;
+  color: #2c3e50;
+  font-size: 1.1rem;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1.25rem;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.info-item label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7f8c8d;
+}
+
+.info-item span {
+  font-size: 0.95rem;
+  color: #2c3e50;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background-color: #e3f2fd;
+  color: #1565c0;
+}
+
+/* ── Contact detail chips (emails, phones, etc. inline) ───── */
+.detail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.1rem;
+}
+
+.detail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.2rem 0.6rem;
+  background: #f0f4ff;
+  border: 1px solid #c5cef9;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  color: #2c3e50;
+}
+
+.detail-chip em {
+  font-style: normal;
+  color: #7f8c8d;
+  font-size: 0.8rem;
+}
+
+.notes-content {
+  color: #2c3e50;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+/* ── Contact/Company detail: edit form ────────────────────── */
+.contact-form {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 600px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Contact detail: shared form fields ───────────────────── */
 .form-group {
   display: flex;
@@ -176,7 +356,7 @@
   color: #2c3e50;
 }
 
-.form-group input,
+.form-group input:not([type="checkbox"]),
 .form-group select,
 .form-group textarea {
   padding: 0.65rem 0.75rem;
@@ -186,7 +366,7 @@
   font-family: inherit;
 }
 
-.form-group input:focus,
+.form-group input:not([type="checkbox"]):focus,
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
@@ -319,6 +499,13 @@
   background-color: #e3f2fd;
   color: #1565c0;
   margin-bottom: 0.35rem;
+}
+
+.timeline-happened-on {
+  margin: 0.35rem 0 0;
+  color: #6c757d;
+  font-size: 0.8rem;
+  font-style: italic;
 }
 
 .timeline-note {
