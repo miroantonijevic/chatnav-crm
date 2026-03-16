@@ -6,7 +6,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '../layouts/MainLayout';
 import { fmtDateTime, fromServer } from '../utils/dates';
 import { companyApi } from '../api';
-import { Company, RelationshipStatus } from '../types';
+import { Company } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import './Contacts.css';
 

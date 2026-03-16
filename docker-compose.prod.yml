@@ -1,0 +1,21 @@
+# Production overrides — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+
+services:
+  backend:
+    ports: !reset
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - backend-data:/app/data   # no source-mount, use image code
+    environment:
+      - RELOAD=false
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        - VITE_API_URL=
+    ports: !reset
+      - "127.0.0.1:8081:80"
+    volumes: !reset []   # remove dev source mounts, use image code only
