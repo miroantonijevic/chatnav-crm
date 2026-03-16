@@ -1,14 +1,22 @@
-# Production overrides — use with:
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+# Production — standalone file, used with:
+#   docker compose -f docker-compose.prod.yml up --build -d
 
 services:
   backend:
-    ports: !reset
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crm-backend
+    ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - backend-data:/app/data   # no source-mount, use image code
+      - backend-data:/app/data
+    env_file:
+      - ./backend/.env
     environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/crm.db
       - RELOAD=false
+    restart: unless-stopped
 
   frontend:
     build:
@@ -16,6 +24,12 @@ services:
       dockerfile: Dockerfile.prod
       args:
         - VITE_API_URL=
-    ports: !reset
+    container_name: crm-frontend
+    ports:
       - "127.0.0.1:8081:80"
-    volumes: !reset []   # remove dev source mounts, use image code only
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend-data:

@@ -14,7 +14,7 @@ APP_DIR = "/opt/chatnav-crm"
 REMOTE_COMMANDS = " && ".join([
     f"cd {APP_DIR}",
     "git pull",
-    "docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build",
+    "docker compose -f docker-compose.prod.yml up -d --build",
 ])
 
 def run(cmd):
