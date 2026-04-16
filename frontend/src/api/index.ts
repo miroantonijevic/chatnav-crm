@@ -69,6 +69,8 @@ export const contactApi = {
   getHistory: (id: number) => apiClient.get<HistoryEntry[]>(`/contacts/${id}/history`),
   addHistory: (id: number, data: HistoryCreate) =>
     apiClient.post<HistoryEntry>(`/contacts/${id}/history`, data),
+  markContacted: (id: number) =>
+    apiClient.post<HistoryEntry>(`/contacts/${id}/mark-contacted`, {}),
 };
 
 // Company endpoints
@@ -90,6 +92,8 @@ export const companyApi = {
   getHistory: (id: number) => apiClient.get<CompanyHistoryEntry[]>(`/companies/${id}/history`),
   addHistory: (id: number, data: CompanyHistoryCreate) =>
     apiClient.post<CompanyHistoryEntry>(`/companies/${id}/history`, data),
+  markContacted: (id: number) =>
+    apiClient.post<CompanyHistoryEntry>(`/companies/${id}/mark-contacted`, {}),
 };
 
 // Reminder endpoints

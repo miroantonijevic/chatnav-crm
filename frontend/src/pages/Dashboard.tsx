@@ -16,6 +16,8 @@ export const DashboardPage: React.FC = () => {
   const [upcomingCompanies, setUpcomingCompanies] = useState<Company[]>([]);
   const [reminderStats, setReminderStats] = useState<ReminderStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [markingContacts, setMarkingContacts] = useState<Set<number>>(new Set());
+  const [markingCompanies, setMarkingCompanies] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     loadData();
@@ -39,6 +41,30 @@ export const DashboardPage: React.FC = () => {
       console.error('Failed to load dashboard data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMarkContactContacted = async (id: number) => {
+    setMarkingContacts((prev: Set<number>) => new Set(prev).add(id));
+    try {
+      await contactApi.markContacted(id);
+      await loadData();
+    } catch (error) {
+      console.error('Failed to mark contact as contacted:', error);
+    } finally {
+      setMarkingContacts((prev: Set<number>) => { const next = new Set(prev); next.delete(id); return next; });
+    }
+  };
+
+  const handleMarkCompanyContacted = async (id: number) => {
+    setMarkingCompanies((prev: Set<number>) => new Set(prev).add(id));
+    try {
+      await companyApi.markContacted(id);
+      await loadData();
+    } catch (error) {
+      console.error('Failed to mark company as contacted:', error);
+    } finally {
+      setMarkingCompanies((prev: Set<number>) => { const next = new Set(prev); next.delete(id); return next; });
     }
   };
 
@@ -129,6 +155,13 @@ export const DashboardPage: React.FC = () => {
                       </td>
                       <td>
                         <Link to={`/contacts/${contact.id}`} className="btn-link-small">View</Link>
+                        <button
+                          className="btn-success-small"
+                          disabled={markingContacts.has(contact.id)}
+                          onClick={() => handleMarkContactContacted(contact.id)}
+                        >
+                          {markingContacts.has(contact.id) ? '...' : 'Contacted'}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -186,6 +219,13 @@ export const DashboardPage: React.FC = () => {
                       </td>
                       <td>
                         <Link to={`/companies/${company.id}`} className="btn-link-small">View</Link>
+                        <button
+                          className="btn-success-small"
+                          disabled={markingCompanies.has(company.id)}
+                          onClick={() => handleMarkCompanyContacted(company.id)}
+                        >
+                          {markingCompanies.has(company.id) ? '...' : 'Contacted'}
+                        </button>
                       </td>
                     </tr>
                   ))}

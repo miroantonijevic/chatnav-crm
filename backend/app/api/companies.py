@@ -175,3 +175,23 @@ async def create_company_history_entry(
 
     history = await CompanyHistoryService.create(db, company_id, history_create, current_user)
     return history
+
+
+@router.post("/{company_id}/mark-contacted", response_model=CompanyHistoryResponse, status_code=status.HTTP_201_CREATED)
+async def mark_company_contacted(
+    company_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Quick action: log an interaction now and clear the next follow-up date.
+    """
+    company = await CompanyService.get_by_id(db, company_id, current_user)
+    if not company:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Company not found"
+        )
+
+    history = await CompanyHistoryService.mark_contacted(db, company_id, current_user)
+    return history

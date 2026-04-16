@@ -100,3 +100,42 @@ class CompanyHistoryService:
             ).where(CompanyHistory.id == db_history.id)
         )
         return result.scalar_one()
+
+    @staticmethod
+    async def mark_contacted(
+        db: AsyncSession,
+        company_id: int,
+        user: User
+    ) -> CompanyHistory:
+        """
+        Quick-action: log an interaction now, clear next_contact_due_at,
+        and update last_contacted_at. Does NOT change the relationship status.
+        """
+        now = datetime.now(timezone.utc)
+
+        result = await db.execute(select(Company).where(Company.id == company_id))
+        company = result.scalar_one()
+
+        db_history = CompanyHistory(
+            company_id=company_id,
+            changed_by_user_id=user.id,
+            entry_type="interaction",
+            status=company.current_relationship_status,
+            note="Marked as contacted",
+            interaction_at=now,
+            next_contact_due_at=None,
+        )
+        db.add(db_history)
+
+        company.last_contacted_at = now
+        company.next_contact_due_at = None
+
+        await db.commit()
+        await db.refresh(db_history)
+
+        result = await db.execute(
+            select(CompanyHistory).options(
+                joinedload(CompanyHistory.changed_by)
+            ).where(CompanyHistory.id == db_history.id)
+        )
+        return result.scalar_one()

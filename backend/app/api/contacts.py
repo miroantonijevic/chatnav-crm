@@ -171,3 +171,23 @@ async def create_history_entry(
 
     history = await HistoryService.create(db, contact_id, history_create, current_user)
     return history
+
+
+@router.post("/{contact_id}/mark-contacted", response_model=HistoryResponse, status_code=status.HTTP_201_CREATED)
+async def mark_contact_contacted(
+    contact_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Quick action: log an interaction now and clear the next follow-up date.
+    """
+    contact = await ContactService.get_by_id(db, contact_id, current_user)
+    if not contact:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact not found"
+        )
+
+    history = await HistoryService.mark_contacted(db, contact_id, current_user)
+    return history
