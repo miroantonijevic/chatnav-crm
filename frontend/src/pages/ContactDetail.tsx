@@ -14,6 +14,7 @@ const ENTRY_TYPE_LABEL: Record<string, string> = {
   created: 'Contact created',
   edited: 'Contact edited',
   interaction: 'Interaction logged',
+  marked_contacted: 'Marked as contacted',
 };
 
 const STATUS_LABELS: Record<string, string> = {

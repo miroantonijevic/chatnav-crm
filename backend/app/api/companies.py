@@ -10,6 +10,7 @@ from app.schemas.company import (
     CompanyCreate, CompanyUpdate, CompanyResponse,
     CompanyHistoryCreate, CompanyHistoryResponse, CompanyListItem,
 )
+from app.schemas.history import MarkContactedRequest
 from app.services.company_service import CompanyService
 from app.services.company_history_service import CompanyHistoryService
 from app.api.dependencies import get_current_active_user
@@ -180,6 +181,7 @@ async def create_company_history_entry(
 @router.post("/{company_id}/mark-contacted", response_model=CompanyHistoryResponse, status_code=status.HTTP_201_CREATED)
 async def mark_company_contacted(
     company_id: int,
+    body: MarkContactedRequest = MarkContactedRequest(),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -193,5 +195,11 @@ async def mark_company_contacted(
             detail="Company not found"
         )
 
-    history = await CompanyHistoryService.mark_contacted(db, company_id, current_user)
+    history = await CompanyHistoryService.mark_contacted(
+        db, company_id, current_user,
+        note=body.note,
+        status=body.status,
+        interaction_at=body.interaction_at,
+        next_contact_due_at=body.next_contact_due_at,
+    )
     return history

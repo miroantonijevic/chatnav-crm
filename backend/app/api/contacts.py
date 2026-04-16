@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.schemas.contact import ContactCreate, ContactUpdate, ContactResponse
-from app.schemas.history import HistoryCreate, HistoryResponse
+from app.schemas.history import HistoryCreate, HistoryResponse, MarkContactedRequest
 from app.services.contact_service import ContactService
 from app.services.history_service import HistoryService
 from app.api.dependencies import get_current_active_user
@@ -176,6 +176,7 @@ async def create_history_entry(
 @router.post("/{contact_id}/mark-contacted", response_model=HistoryResponse, status_code=status.HTTP_201_CREATED)
 async def mark_contact_contacted(
     contact_id: int,
+    body: MarkContactedRequest = MarkContactedRequest(),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -189,5 +190,11 @@ async def mark_contact_contacted(
             detail="Contact not found"
         )
 
-    history = await HistoryService.mark_contacted(db, contact_id, current_user)
+    history = await HistoryService.mark_contacted(
+        db, contact_id, current_user,
+        note=body.note,
+        status=body.status,
+        interaction_at=body.interaction_at,
+        next_contact_due_at=body.next_contact_due_at,
+    )
     return history

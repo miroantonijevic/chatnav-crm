@@ -4,10 +4,20 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MainLayout } from '../layouts/MainLayout';
-import { fromServer, fmtDateTime } from '../utils/dates';
+import { fromServer, fmtDateTime, localNow, dtDate, dtTime, dtCombine } from '../utils/dates';
 import { contactApi, companyApi, reminderApi } from '../api';
-import { Contact, Company, ReminderStats } from '../types';
+import { Contact, Company, ReminderStats, RelationshipStatus } from '../types';
 import './Dashboard.css';
+
+const STATUS_LABELS: Record<string, string> = {
+  new: 'New',
+  contacted: 'Contacted',
+  'follow-up-needed': 'Follow-up Needed',
+  interested: 'Interested',
+  'not-interested': 'Not Interested',
+  customer: 'Customer',
+  inactive: 'Inactive',
+};
 
 export const DashboardPage: React.FC = () => {
   const [dueContacts, setDueContacts] = useState<Contact[]>([]);
@@ -16,8 +26,19 @@ export const DashboardPage: React.FC = () => {
   const [upcomingCompanies, setUpcomingCompanies] = useState<Company[]>([]);
   const [reminderStats, setReminderStats] = useState<ReminderStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [markingContacts, setMarkingContacts] = useState<Set<number>>(new Set());
-  const [markingCompanies, setMarkingCompanies] = useState<Set<number>>(new Set());
+  const [logModal, setLogModal] = useState<{
+    type: 'contact' | 'company';
+    id: number;
+    name: string;
+    currentStatus?: RelationshipStatus;
+  } | null>(null);
+  const [logForm, setLogForm] = useState({
+    status: RelationshipStatus.CONTACTED as string,
+    interaction_at: localNow(),
+    next_contact_due_at: '',
+    note: '',
+  });
+  const [logSubmitting, setLogSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -44,29 +65,57 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  const handleMarkContactContacted = async (id: number) => {
-    setMarkingContacts((prev: Set<number>) => new Set(prev).add(id));
+  const openLogModal = (type: 'contact' | 'company', id: number, name: string, currentStatus?: RelationshipStatus) => {
+    setLogModal({ type, id, name, currentStatus });
+    setLogForm({
+      status: currentStatus ?? RelationshipStatus.CONTACTED,
+      interaction_at: localNow(),
+      next_contact_due_at: '',
+      note: '',
+    });
+  };
+
+  const closeLogModal = () => {
+    if (logSubmitting) return;
+    setLogModal(null);
+  };
+
+  const handleLogSubmit = async () => {
+    if (!logModal) return;
+    setLogSubmitting(true);
     try {
-      await contactApi.markContacted(id);
+      const interaction_at = dtCombine(
+        dtDate(logForm.interaction_at),
+        dtTime(logForm.interaction_at),
+      );
+      const next_contact_due_at = logForm.next_contact_due_at
+        ? dtCombine(dtDate(logForm.next_contact_due_at), dtTime(logForm.next_contact_due_at))
+        : null;
+      const payload = {
+        status: logForm.status,
+        interaction_at,
+        next_contact_due_at,
+        note: logForm.note || undefined,
+      };
+      if (logModal.type === 'contact') {
+        await contactApi.markContacted(logModal.id, payload);
+      } else {
+        await companyApi.markContacted(logModal.id, payload);
+      }
+      setLogModal(null);
       await loadData();
     } catch (error) {
-      console.error('Failed to mark contact as contacted:', error);
+      console.error('Failed to log interaction:', error);
     } finally {
-      setMarkingContacts((prev: Set<number>) => { const next = new Set(prev); next.delete(id); return next; });
+      setLogSubmitting(false);
     }
   };
 
-  const handleMarkCompanyContacted = async (id: number) => {
-    setMarkingCompanies((prev: Set<number>) => new Set(prev).add(id));
-    try {
-      await companyApi.markContacted(id);
-      await loadData();
-    } catch (error) {
-      console.error('Failed to mark company as contacted:', error);
-    } finally {
-      setMarkingCompanies((prev: Set<number>) => { const next = new Set(prev); next.delete(id); return next; });
-    }
-  };
+  const handleMarkContactContacted = (id: number, name: string, currentStatus?: RelationshipStatus) =>
+    openLogModal('contact', id, name, currentStatus);
+
+  const handleMarkCompanyContacted = (id: number, name: string, currentStatus?: RelationshipStatus) =>
+    openLogModal('company', id, name, currentStatus);
 
   if (loading) {
     return (
@@ -156,11 +205,10 @@ export const DashboardPage: React.FC = () => {
                       <td>
                         <Link to={`/contacts/${contact.id}`} className="btn-link-small">View</Link>
                         <button
-                          className="btn-success-small"
-                          disabled={markingContacts.has(contact.id)}
-                          onClick={() => handleMarkContactContacted(contact.id)}
+                          className="btn-log-small"
+                          onClick={() => handleMarkContactContacted(contact.id, `${contact.first_name} ${contact.last_name}`, contact.current_relationship_status)}
                         >
-                          {markingContacts.has(contact.id) ? '...' : 'Contacted'}
+                          Mark as contacted
                         </button>
                       </td>
                     </tr>
@@ -220,11 +268,10 @@ export const DashboardPage: React.FC = () => {
                       <td>
                         <Link to={`/companies/${company.id}`} className="btn-link-small">View</Link>
                         <button
-                          className="btn-success-small"
-                          disabled={markingCompanies.has(company.id)}
-                          onClick={() => handleMarkCompanyContacted(company.id)}
+                          className="btn-log-small"
+                          onClick={() => handleMarkCompanyContacted(company.id, company.name, company.current_relationship_status)}
                         >
-                          {markingCompanies.has(company.id) ? '...' : 'Contacted'}
+                          Mark as contacted
                         </button>
                       </td>
                     </tr>
@@ -283,6 +330,12 @@ export const DashboardPage: React.FC = () => {
                       </td>
                       <td>
                         <Link to={`/contacts/${contact.id}`} className="btn-link-small">View</Link>
+                        <button
+                          className="btn-log-small"
+                          onClick={() => handleMarkContactContacted(contact.id, `${contact.first_name} ${contact.last_name}`, contact.current_relationship_status)}
+                        >
+                          Mark as contacted
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -340,6 +393,12 @@ export const DashboardPage: React.FC = () => {
                       </td>
                       <td>
                         <Link to={`/companies/${company.id}`} className="btn-link-small">View</Link>
+                        <button
+                          className="btn-log-small"
+                          onClick={() => handleMarkCompanyContacted(company.id, company.name, company.current_relationship_status)}
+                        >
+                          Mark as contacted
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -349,6 +408,96 @@ export const DashboardPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Log interaction modal */}
+      {logModal && (
+        <div className="modal-overlay" onClick={closeLogModal}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <h3>Mark as Contacted</h3>
+            <p className="modal-subtitle">{logModal.name}</p>
+
+            <div className="form-group">
+              <label className="modal-label">Status</label>
+              <select
+                className="modal-select"
+                value={logForm.status}
+                onChange={(e) => setLogForm(f => ({ ...f, status: e.target.value }))}
+                disabled={logSubmitting}
+              >
+                {Object.values(RelationshipStatus).map((s) => (
+                  <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="modal-label">Interaction Date</label>
+              <div className="datetime-split">
+                <input
+                  type="date"
+                  className="modal-input"
+                  value={dtDate(logForm.interaction_at)}
+                  onChange={(e) => setLogForm(f => ({ ...f, interaction_at: dtCombine(e.target.value, dtTime(f.interaction_at)) }))}
+                  disabled={logSubmitting}
+                  required
+                />
+                <input
+                  type="time"
+                  className="modal-input"
+                  value={dtTime(logForm.interaction_at)}
+                  onChange={(e) => setLogForm(f => ({ ...f, interaction_at: dtCombine(dtDate(f.interaction_at), e.target.value) }))}
+                  disabled={logSubmitting}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="modal-label">
+                Next Follow-up Date <span className="modal-optional">(optional — leave blank to clear)</span>
+              </label>
+              <div className="datetime-split">
+                <input
+                  type="date"
+                  className="modal-input"
+                  value={dtDate(logForm.next_contact_due_at)}
+                  onChange={(e) => setLogForm(f => ({ ...f, next_contact_due_at: dtCombine(e.target.value, dtTime(f.next_contact_due_at)) }))}
+                  disabled={logSubmitting}
+                />
+                <input
+                  type="time"
+                  className="modal-input"
+                  value={dtTime(logForm.next_contact_due_at)}
+                  onChange={(e) => setLogForm(f => ({ ...f, next_contact_due_at: dtCombine(dtDate(f.next_contact_due_at), e.target.value) }))}
+                  disabled={logSubmitting}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="modal-label">
+                Note <span className="modal-optional">(optional)</span>
+              </label>
+              <textarea
+                className="modal-textarea"
+                rows={3}
+                placeholder="What was discussed?"
+                value={logForm.note}
+                onChange={(e) => setLogForm(f => ({ ...f, note: e.target.value }))}
+                disabled={logSubmitting}
+              />
+            </div>
+
+            <div className="modal-actions">
+              <button className="modal-btn-cancel" onClick={closeLogModal} disabled={logSubmitting}>
+                Cancel
+              </button>
+              <button className="modal-btn-submit" onClick={handleLogSubmit} disabled={logSubmitting}>
+                {logSubmitting ? 'Saving...' : 'Mark as Contacted'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 };

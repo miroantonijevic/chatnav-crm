@@ -105,30 +105,37 @@ class HistoryService:
     async def mark_contacted(
         db: AsyncSession,
         contact_id: int,
-        user: User
+        user: User,
+        note: Optional[str] = None,
+        status: Optional[RelationshipStatus] = None,
+        interaction_at: Optional[datetime] = None,
+        next_contact_due_at: Optional[datetime] = None,
     ) -> RelationshipHistory:
         """
-        Quick-action: log an interaction now, clear next_contact_due_at,
-        and update last_contacted_at. Does NOT change the relationship status.
+        Quick-action: log a marked_contacted interaction, clear next_contact_due_at
+        (unless the caller provides a new one), and update last_contacted_at.
         """
-        now = datetime.now(timezone.utc)
+        now = interaction_at or datetime.now(timezone.utc)
 
         result = await db.execute(select(Contact).where(Contact.id == contact_id))
         contact = result.scalar_one()
 
+        effective_status = status or contact.current_relationship_status
+
         db_history = RelationshipHistory(
             contact_id=contact_id,
             changed_by_user_id=user.id,
-            entry_type="interaction",
-            status=contact.current_relationship_status,
-            note="Marked as contacted",
+            entry_type="marked_contacted",
+            status=effective_status,
+            note=note or "Marked as contacted",
             interaction_at=now,
-            next_contact_due_at=None,
+            next_contact_due_at=next_contact_due_at,
         )
         db.add(db_history)
 
+        contact.current_relationship_status = effective_status
         contact.last_contacted_at = now
-        contact.next_contact_due_at = None
+        contact.next_contact_due_at = next_contact_due_at
 
         await db.commit()
         await db.refresh(db_history)

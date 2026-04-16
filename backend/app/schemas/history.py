@@ -8,6 +8,14 @@ from pydantic import BaseModel, model_validator
 from app.models.contact import RelationshipStatus
 
 
+# Schema for the quick "Mark as contacted" action
+class MarkContactedRequest(BaseModel):
+    note: Optional[str] = None
+    status: Optional[RelationshipStatus] = None
+    interaction_at: Optional[datetime] = None
+    next_contact_due_at: Optional[datetime] = None
+
+
 # Schema for creating a manual interaction entry
 class HistoryCreate(BaseModel):
     status: RelationshipStatus

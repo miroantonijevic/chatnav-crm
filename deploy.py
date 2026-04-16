@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 SERVER = "root@crm.chatnav.ai"
-APP_DIR = "/opt/chatnav-crm"
+APP_DIR = "/root/chatnav-crm"
 
 REMOTE_COMMANDS = " && ".join([
     f"cd {APP_DIR}",
