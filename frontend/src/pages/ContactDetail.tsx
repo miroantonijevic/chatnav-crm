@@ -1,7 +1,7 @@
 /**
  * Contact detail/edit page
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '../layouts/MainLayout';
 import { contactApi, userApi, companyApi } from '../api';
@@ -52,6 +52,10 @@ export const ContactDetailPage: React.FC = () => {
   const [logError, setLogError] = useState('');
   const [logSaving, setLogSaving] = useState(false);
 
+  const [nameSuggestions, setNameSuggestions] = useState<Contact[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const nameSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [formData, setFormData] = useState<ContactCreate>({
     first_name: '',
     last_name: '',
@@ -67,6 +71,26 @@ export const ContactDetailPage: React.FC = () => {
   type DetailsForm = Record<'email' | 'phone', DetailRow[]>;
   const [detailsForm, setDetailsForm] = useState<DetailsForm>({ email: [], phone: [] });
   const [detailCounter, setDetailCounter] = useState(0);
+
+  const handleNameFieldChange = (field: 'first_name' | 'last_name', value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    if (id !== 'new') return;
+    if (nameSearchTimer.current) clearTimeout(nameSearchTimer.current);
+    if (value.trim().length < 2) {
+      setNameSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    nameSearchTimer.current = setTimeout(async () => {
+      try {
+        const results = await contactApi.list({ search: value.trim(), limit: 5 });
+        setNameSuggestions(results);
+        setShowSuggestions(results.length > 0);
+      } catch {
+        // silently ignore
+      }
+    }, 300);
+  };
 
   const addDetailRow = (type: 'email' | 'phone') => {
     const idx = detailCounter;
@@ -279,14 +303,17 @@ export const ContactDetailPage: React.FC = () => {
 
         {editing ? (
           <form id="contact-form" onSubmit={handleSubmit} className="contact-form">
-            <div className="form-row">
+            <div className="form-row" style={{ position: 'relative' }}>
               <div className="form-group">
                 <label htmlFor="first_name">First Name *</label>
                 <input
                   id="first_name"
                   type="text"
                   value={formData.first_name}
-                  onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                  onChange={(e) => handleNameFieldChange('first_name', e.target.value)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  onFocus={() => nameSuggestions.length > 0 && setShowSuggestions(true)}
+                  autoComplete="off"
                   required
                 />
               </div>
@@ -296,10 +323,25 @@ export const ContactDetailPage: React.FC = () => {
                   id="last_name"
                   type="text"
                   value={formData.last_name}
-                  onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                  onChange={(e) => handleNameFieldChange('last_name', e.target.value)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  onFocus={() => nameSuggestions.length > 0 && setShowSuggestions(true)}
+                  autoComplete="off"
                   required
                 />
               </div>
+              {isNewContact && showSuggestions && (
+                <ul className="name-suggestions" style={{ top: '100%' }}>
+                  <li className="name-suggestions-header">Existing contacts — select to open instead of creating a duplicate:</li>
+                  {nameSuggestions.map((c) => (
+                    <li key={c.id} className="name-suggestions-item" onMouseDown={() => navigate(`/contacts/${c.id}`)}>
+                      <span className="name-suggestions-name">{c.first_name} {c.last_name}</span>
+                      {c.company_name && <span className="name-suggestions-meta">{c.company_name}</span>}
+                      <span className="name-suggestions-action">→ Open</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <div className="form-row">
