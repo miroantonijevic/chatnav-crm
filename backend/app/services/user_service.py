@@ -52,6 +52,11 @@ class UserService:
         """Update a user"""
         update_data = user_update.model_dump(exclude_unset=True)
 
+        # Handle password reset separately — never store new_password as a field
+        new_password = update_data.pop('new_password', None)
+        if new_password:
+            user.hashed_password = get_password_hash(new_password)
+
         for field, value in update_data.items():
             setattr(user, field, value)
 

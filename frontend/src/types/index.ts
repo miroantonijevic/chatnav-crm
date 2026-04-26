@@ -132,6 +132,8 @@ export interface UserUpdate {
   full_name?: string;
   role?: UserRole;
   is_active?: boolean;
+  new_password?: string;
+  must_change_password?: boolean;
 }
 
 export interface ReminderStats {

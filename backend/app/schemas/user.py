@@ -26,6 +26,8 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
+    new_password: Optional[str] = Field(None, min_length=6)
+    must_change_password: Optional[bool] = None
 
 
 # Schema for user response (never include hashed_password)

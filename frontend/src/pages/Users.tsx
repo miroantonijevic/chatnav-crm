@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { MainLayout } from '../layouts/MainLayout';
 import { fromServer, fmtDate } from '../utils/dates';
 import { userApi } from '../api';
-import { User, UserCreate, UserRole } from '../types';
+import { User, UserCreate, UserUpdate, UserRole } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import './Users.css';
 
@@ -29,6 +29,8 @@ export const UsersPage: React.FC = () => {
     email: '',
     full_name: '',
     role: UserRole.USER,
+    new_password: '',
+    must_change_password: false,
   });
 
   const isAdmin = currentUser?.role === UserRole.ADMIN;
@@ -109,6 +111,8 @@ export const UsersPage: React.FC = () => {
       email: user.email,
       full_name: user.full_name,
       role: user.role,
+      new_password: '',
+      must_change_password: user.must_change_password,
     });
     setShowForm(false);
     setError('');
@@ -123,7 +127,18 @@ export const UsersPage: React.FC = () => {
     setSuccess('');
 
     try {
-      await userApi.update(editingUser.id, editFormData);
+      const payload: UserUpdate = {
+        email: editFormData.email,
+        full_name: editFormData.full_name,
+        role: editFormData.role,
+        must_change_password: editFormData.must_change_password,
+      };
+      if (editFormData.new_password) {
+        payload.new_password = editFormData.new_password;
+        // Non-admins changing their own password clears the force-change flag
+        if (!isAdmin) payload.must_change_password = false;
+      }
+      await userApi.update(editingUser.id, payload);
       setSuccess('User updated successfully');
       setEditingUser(null);
       await loadUsers();
@@ -256,6 +271,35 @@ export const UsersPage: React.FC = () => {
                     <option value={UserRole.USER}>Regular User</option>
                     <option value={UserRole.ADMIN}>Admin</option>
                   </select>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label htmlFor="edit_new_password">
+                  New Password <span style={{ fontWeight: 400, color: '#95a5a6' }}>(optional — leave blank to keep current)</span>
+                </label>
+                <input
+                  id="edit_new_password"
+                  type="password"
+                  value={editFormData.new_password}
+                  onChange={(e) => setEditFormData({ ...editFormData, new_password: e.target.value })}
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              {isAdmin && (
+                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    id="edit_must_change_password"
+                    type="checkbox"
+                    checked={editFormData.must_change_password}
+                    onChange={(e) => setEditFormData({ ...editFormData, must_change_password: e.target.checked })}
+                    style={{ width: 'auto', margin: 0 }}
+                  />
+                  <label htmlFor="edit_must_change_password" style={{ margin: 0, fontWeight: 400 }}>
+                    Force password change on next login
+                  </label>
                 </div>
               )}
 

@@ -91,10 +91,14 @@ async def update_user(
             detail="You can only edit your own profile"
         )
 
-    # Regular users cannot change role or is_active status
+    # Regular users cannot change role, is_active, or the force-change flag
     if current_user.role != UserRole.ADMIN:
         user_update.role = None
         user_update.is_active = None
+        user_update.must_change_password = None
+        # Changing their own password clears the force-change flag
+        if user_update.new_password:
+            user_update.must_change_password = False
 
     # Check email uniqueness if email is being updated
     if user_update.email and user_update.email != user.email:
