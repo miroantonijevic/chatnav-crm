@@ -1,7 +1,7 @@
 /**
  * Company detail/edit page
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '../layouts/MainLayout';
 import { companyApi, userApi } from '../api';
@@ -75,6 +75,11 @@ export const CompanyDetailPage: React.FC = () => {
     owner_user_id: user?.id,
     contact_details: [],
   });
+
+  // Duplicate-detection state (create mode only)
+  const [nameSuggestions, setNameSuggestions] = useState<Company[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const nameSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -201,6 +206,26 @@ export const CompanyDetailPage: React.FC = () => {
     }
   };
 
+  const handleNameChange = (value: string) => {
+    setFormData(prev => ({ ...prev, name: value }));
+    if (id !== 'new') return;
+    if (nameSearchTimer.current) clearTimeout(nameSearchTimer.current);
+    if (value.trim().length < 2) {
+      setNameSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    nameSearchTimer.current = setTimeout(async () => {
+      try {
+        const results = await companyApi.list({ search: value.trim(), limit: 5 });
+        setNameSuggestions(results);
+        setShowSuggestions(results.length > 0);
+      } catch {
+        // silently ignore search errors
+      }
+    }, 300);
+  };
+
   const addDetailRow = (type: CompanyContactDetailCreate['type']) => {
     const idx = detailCounter;
     setDetailCounter((c: number) => c + 1);
@@ -264,15 +289,30 @@ export const CompanyDetailPage: React.FC = () => {
         {editing ? (
           <form id="company-form" onSubmit={handleSubmit} className="contact-form">
             <div className="form-row">
-              <div className="form-group">
+              <div className="form-group" style={{ position: 'relative' }}>
                 <label htmlFor="name">Name *</label>
                 <input
                   id="name"
                   type="text"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  onFocus={() => nameSuggestions.length > 0 && setShowSuggestions(true)}
+                  autoComplete="off"
                   required
                 />
+                {isNew && showSuggestions && (
+                  <ul className="name-suggestions">
+                    <li className="name-suggestions-header">Existing companies — select to open instead of creating a duplicate:</li>
+                    {nameSuggestions.map((c) => (
+                      <li key={c.id} className="name-suggestions-item" onMouseDown={() => navigate(`/companies/${c.id}`)}>
+                        <span className="name-suggestions-name">{c.name}</span>
+                        {c.industry && <span className="name-suggestions-meta">{c.industry}</span>}
+                        <span className="name-suggestions-action">→ Open</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div className="form-group">
                 <label htmlFor="owner_user_id">Relationship Owner *</label>

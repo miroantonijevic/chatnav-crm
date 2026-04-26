@@ -521,3 +521,66 @@
   font-size: 0.85rem;
   font-weight: 500;
 }
+
+/* Company name duplicate-detection autocomplete */
+.name-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: #fff;
+  border: 1px solid #dce1e7;
+  border-radius: 0 0 6px 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.name-suggestions-header {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.78rem;
+  color: #95a5a6;
+  background: #f8f9fa;
+  border-bottom: 1px solid #eee;
+  cursor: default;
+}
+
+.name-suggestions-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background 0.15s;
+}
+
+.name-suggestions-item:last-child {
+  border-bottom: none;
+}
+
+.name-suggestions-item:hover {
+  background: #f0f4ff;
+}
+
+.name-suggestions-name {
+  font-weight: 600;
+  color: #2c3e50;
+  flex: 1;
+}
+
+.name-suggestions-meta {
+  font-size: 0.82rem;
+  color: #7f8c8d;
+}
+
+.name-suggestions-action {
+  font-size: 0.82rem;
+  color: #667eea;
+  font-weight: 500;
+  white-space: nowrap;
+}
