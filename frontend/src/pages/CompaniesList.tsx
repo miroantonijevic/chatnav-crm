@@ -22,10 +22,10 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export const CompaniesListPage: React.FC = () => {
-  useScrollRestoration('scroll:companies', !loading);
-
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  useScrollRestoration('scroll:companies', !loading);
+
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
 
