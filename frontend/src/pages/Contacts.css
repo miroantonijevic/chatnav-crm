@@ -10,7 +10,13 @@
 
 .contacts-table table {
   min-width: 900px;
+  border-collapse: collapse;
   width: 100%;
+}
+
+.contacts-table td {
+  overflow-wrap: anywhere;
+  max-width: 220px;
 }
 
 .page-header {

@@ -14,10 +14,11 @@ export function useScrollRestoration(key: string, ready: boolean = true) {
     const saved = sessionStorage.getItem(key);
     if (saved === null) return;
     const y = parseInt(saved, 10);
-    // Use rAF to ensure the DOM has painted at full height before scrolling
-    requestAnimationFrame(() => {
-      window.scrollTo(0, y);
-    });
+    // Delay to run after browser's own scroll restoration and React painting
+    const t = setTimeout(() => {
+      window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior });
+    }, 150);
+    return () => clearTimeout(t);
   }, [key, ready]);
 
   // Save scroll on unmount
