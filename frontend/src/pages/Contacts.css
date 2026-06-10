@@ -2,6 +2,15 @@
   max-width: 1400px;
 }
 
+.contacts-table {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.contacts-table table {
+  min-width: 700px;
+}
+
 .page-header {
   display: flex;
   justify-content: space-between;

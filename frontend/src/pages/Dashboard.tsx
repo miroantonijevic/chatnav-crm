@@ -7,6 +7,7 @@ import { MainLayout } from '../layouts/MainLayout';
 import { fromServer, fmtDateTime, localNow, dtDate, dtTime, dtCombine } from '../utils/dates';
 import { contactApi, companyApi, reminderApi } from '../api';
 import { Contact, Company, ReminderStats, RelationshipStatus } from '../types';
+import { useScrollRestoration } from '../utils/useScrollRestoration';
 import './Dashboard.css';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -20,6 +21,8 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export const DashboardPage: React.FC = () => {
+  useScrollRestoration('scroll:dashboard');
+
   const [dueContacts, setDueContacts] = useState<Contact[]>([]);
   const [upcomingContacts, setUpcomingContacts] = useState<Contact[]>([]);
   const [dueCompanies, setDueCompanies] = useState<Company[]>([]);

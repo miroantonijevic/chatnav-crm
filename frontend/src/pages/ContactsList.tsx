@@ -8,9 +8,12 @@ import { fromServer, fmtDate } from '../utils/dates';
 import { contactApi } from '../api';
 import { Contact, RelationshipStatus } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useScrollRestoration } from '../utils/useScrollRestoration';
 import './Contacts.css';
 
 export const ContactsListPage: React.FC = () => {
+  useScrollRestoration('scroll:contacts');
+
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();

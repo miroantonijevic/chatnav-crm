@@ -8,6 +8,7 @@ import { fmtDateTime, fromServer } from '../utils/dates';
 import { companyApi } from '../api';
 import { Company } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useScrollRestoration } from '../utils/useScrollRestoration';
 import './Contacts.css';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -21,6 +22,8 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export const CompaniesListPage: React.FC = () => {
+  useScrollRestoration('scroll:companies');
+
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
