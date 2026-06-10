@@ -12,10 +12,9 @@ import { useScrollRestoration } from '../utils/useScrollRestoration';
 import './Contacts.css';
 
 export const ContactsListPage: React.FC = () => {
-  useScrollRestoration('scroll:contacts');
-
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  useScrollRestoration('scroll:contacts', !loading);
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
 

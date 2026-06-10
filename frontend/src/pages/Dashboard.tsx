@@ -21,14 +21,13 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export const DashboardPage: React.FC = () => {
-  useScrollRestoration('scroll:dashboard');
-
   const [dueContacts, setDueContacts] = useState<Contact[]>([]);
   const [upcomingContacts, setUpcomingContacts] = useState<Contact[]>([]);
   const [dueCompanies, setDueCompanies] = useState<Company[]>([]);
   const [upcomingCompanies, setUpcomingCompanies] = useState<Company[]>([]);
   const [reminderStats, setReminderStats] = useState<ReminderStats | null>(null);
   const [loading, setLoading] = useState(true);
+  useScrollRestoration('scroll:dashboard', !loading);
   const [logModal, setLogModal] = useState<{
     type: 'contact' | 'company';
     id: number;
