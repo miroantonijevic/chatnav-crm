@@ -10,11 +10,14 @@ export function useScrollRestoration(key: string, ready: boolean = true) {
   // Restore scroll after content is ready
   useEffect(() => {
     if (!ready || restored.current) return;
-    const saved = sessionStorage.getItem(key);
-    if (saved !== null) {
-      window.scrollTo(0, parseInt(saved, 10));
-    }
     restored.current = true;
+    const saved = sessionStorage.getItem(key);
+    if (saved === null) return;
+    const y = parseInt(saved, 10);
+    // Use rAF to ensure the DOM has painted at full height before scrolling
+    requestAnimationFrame(() => {
+      window.scrollTo(0, y);
+    });
   }, [key, ready]);
 
   // Save scroll on unmount

@@ -5,10 +5,12 @@
 .contacts-table {
   overflow-x: auto;
   width: 100%;
+  display: block;
 }
 
 .contacts-table table {
-  min-width: 700px;
+  min-width: 900px;
+  width: 100%;
 }
 
 .page-header {
