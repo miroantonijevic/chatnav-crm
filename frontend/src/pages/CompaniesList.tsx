@@ -107,6 +107,15 @@ export const CompaniesListPage: React.FC = () => {
     setSearchParams(newParams);
   };
 
+  const hasActiveFilters = Boolean(search);
+
+  const handleClearFilters = () => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('search');
+    newParams.delete('page');
+    setSearchParams(newParams);
+  };
+
   const goToPage = (newPage: number) => {
     const newParams = new URLSearchParams(searchParams);
     if (newPage > 1) {
@@ -174,6 +183,12 @@ export const CompaniesListPage: React.FC = () => {
             onChange={(e) => handleSearchChange(e.target.value)}
             className="search-input"
           />
+
+          {hasActiveFilters && (
+            <button type="button" className="btn-clear-filters" onClick={handleClearFilters}>
+              Clear filters
+            </button>
+          )}
         </div>
 
         {loading ? (

@@ -39,34 +39,45 @@ class CompanyService:
         conditions = [Company.is_deleted == False]
 
         if search:
-            search_pattern = f"%{search}%"
-            owner_matches = exists().where(
-                and_(
-                    User.id == Company.owner_user_id,
-                    or_(User.full_name.ilike(search_pattern), User.email.ilike(search_pattern))
+            # Each whitespace-separated word must match somewhere (any field) -
+            # this lets multi-word queries hit different columns (e.g. name + industry).
+            words = [w for w in search.split() if w]
+            word_conditions = []
+            for word in words:
+                pattern = f"%{word}%"
+                owner_matches = exists().where(
+                    and_(
+                        User.id == Company.owner_user_id,
+                        or_(User.full_name.ilike(pattern), User.email.ilike(pattern))
+                    )
                 )
-            )
-            created_by_matches = exists().where(
-                and_(
-                    User.id == Company.created_by_user_id,
-                    or_(User.full_name.ilike(search_pattern), User.email.ilike(search_pattern))
+                created_by_matches = exists().where(
+                    and_(
+                        User.id == Company.created_by_user_id,
+                        or_(User.full_name.ilike(pattern), User.email.ilike(pattern))
+                    )
                 )
-            )
-            detail_matches = exists().where(
-                and_(
-                    CompanyContactDetail.company_id == Company.id,
-                    CompanyContactDetail.value.ilike(search_pattern)
+                detail_matches = exists().where(
+                    and_(
+                        CompanyContactDetail.company_id == Company.id,
+                        or_(
+                            CompanyContactDetail.value.ilike(pattern),
+                            CompanyContactDetail.label.ilike(pattern),
+                        )
+                    )
                 )
-            )
-            conditions.append(
-                or_(
-                    Company.name.ilike(search_pattern),
-                    Company.industry.ilike(search_pattern),
-                    owner_matches,
-                    created_by_matches,
-                    detail_matches,
+                word_conditions.append(
+                    or_(
+                        Company.name.ilike(pattern),
+                        Company.industry.ilike(pattern),
+                        Company.notes.ilike(pattern),
+                        owner_matches,
+                        created_by_matches,
+                        detail_matches,
+                    )
                 )
-            )
+            if word_conditions:
+                conditions.append(and_(*word_conditions))
 
         now = datetime.now(timezone.utc)
 

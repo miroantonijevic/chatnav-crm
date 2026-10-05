@@ -151,6 +151,26 @@ export interface EntityStats {
   by_status: Record<string, number>;
 }
 
+export interface ActivityByUser {
+  user_id: number;
+  user_name: string;
+  created: number;
+  edited: number;
+  interactions: number;
+  total: number;
+}
+
+export interface ActivityByDay {
+  date: string;
+  count: number;
+}
+
+export interface ActivityStats {
+  days: number;
+  by_user: ActivityByUser[];
+  by_day: ActivityByDay[];
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;

@@ -24,6 +24,7 @@ import type {
   CompanyHistoryEntry,
   CompanyHistoryCreate,
   EntityStats,
+  ActivityStats,
 } from '../types';
 
 // Auth endpoints
@@ -120,4 +121,9 @@ export const companyApi = {
 export const reminderApi = {
   getStats: () => apiClient.get<ReminderStats>('/reminders/stats'),
   triggerCheck: () => apiClient.post('/reminders/check', {}),
+};
+
+// Dashboard aggregate endpoints
+export const dashboardApi = {
+  getActivity: (days = 30) => apiClient.get<ActivityStats>(`/dashboard/activity?days=${days}`),
 };

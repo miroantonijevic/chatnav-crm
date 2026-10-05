@@ -83,6 +83,28 @@
   color: #e67e22;
 }
 
+.activity-chart {
+  margin-bottom: 1.5rem;
+}
+
+.activity-by-user table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.activity-by-user th,
+.activity-by-user td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #eee;
+}
+
+.activity-by-user th {
+  color: #7f8c8d;
+  font-weight: 600;
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;

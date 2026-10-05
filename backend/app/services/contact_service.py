@@ -41,41 +41,52 @@ class ContactService:
         conditions = [Contact.is_deleted == False]
 
         if search:
-            search_pattern = f"%{search}%"
-            owner_matches = exists().where(
-                and_(
-                    User.id == Contact.owner_user_id,
-                    or_(User.full_name.ilike(search_pattern), User.email.ilike(search_pattern))
+            # Each whitespace-separated word must match somewhere (any field) -
+            # this lets "Ivan Horvat" or "Ivan Acme" match across different columns.
+            words = [w for w in search.split() if w]
+            word_conditions = []
+            for word in words:
+                pattern = f"%{word}%"
+                owner_matches = exists().where(
+                    and_(
+                        User.id == Contact.owner_user_id,
+                        or_(User.full_name.ilike(pattern), User.email.ilike(pattern))
+                    )
                 )
-            )
-            created_by_matches = exists().where(
-                and_(
-                    User.id == Contact.created_by_user_id,
-                    or_(User.full_name.ilike(search_pattern), User.email.ilike(search_pattern))
+                created_by_matches = exists().where(
+                    and_(
+                        User.id == Contact.created_by_user_id,
+                        or_(User.full_name.ilike(pattern), User.email.ilike(pattern))
+                    )
                 )
-            )
-            company_matches = exists().where(
-                and_(
-                    Company.id == Contact.company_id,
-                    Company.name.ilike(search_pattern)
+                company_matches = exists().where(
+                    and_(
+                        Company.id == Contact.company_id,
+                        Company.name.ilike(pattern)
+                    )
                 )
-            )
-            detail_matches = exists().where(
-                and_(
-                    ContactContactDetail.contact_id == Contact.id,
-                    ContactContactDetail.value.ilike(search_pattern)
+                detail_matches = exists().where(
+                    and_(
+                        ContactContactDetail.contact_id == Contact.id,
+                        or_(
+                            ContactContactDetail.value.ilike(pattern),
+                            ContactContactDetail.label.ilike(pattern),
+                        )
+                    )
                 )
-            )
-            conditions.append(
-                or_(
-                    Contact.first_name.ilike(search_pattern),
-                    Contact.last_name.ilike(search_pattern),
-                    owner_matches,
-                    created_by_matches,
-                    company_matches,
-                    detail_matches,
+                word_conditions.append(
+                    or_(
+                        Contact.first_name.ilike(pattern),
+                        Contact.last_name.ilike(pattern),
+                        Contact.notes.ilike(pattern),
+                        owner_matches,
+                        created_by_matches,
+                        company_matches,
+                        detail_matches,
+                    )
                 )
-            )
+            if word_conditions:
+                conditions.append(and_(*word_conditions))
 
         if status:
             conditions.append(Contact.current_relationship_status == status)

@@ -3,10 +3,11 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { MainLayout } from '../layouts/MainLayout';
 import { fromServer, fmtDateTime, localNow, dtDate, dtTime, dtCombine } from '../utils/dates';
-import { contactApi, companyApi, reminderApi } from '../api';
-import { Contact, ReminderStats, RelationshipStatus, EntityStats } from '../types';
+import { contactApi, companyApi, reminderApi, dashboardApi } from '../api';
+import { Contact, ReminderStats, RelationshipStatus, EntityStats, ActivityStats } from '../types';
 import { useScrollRestoration } from '../utils/useScrollRestoration';
 import './Dashboard.css';
 
@@ -20,11 +21,18 @@ const STATUS_LABELS: Record<string, string> = {
   inactive: 'Inactive',
 };
 
+/** Format a "YYYY-MM-DD" bucket as "DD.MM" (parsed as local, no timezone shift). */
+const formatActivityDate = (value: string): string => {
+  const [, month, day] = value.split('-');
+  return `${day}.${month}`;
+};
+
 export const DashboardPage: React.FC = () => {
   const [dueContacts, setDueContacts] = useState<Contact[]>([]);
   const [reminderStats, setReminderStats] = useState<ReminderStats | null>(null);
   const [contactStats, setContactStats] = useState<EntityStats | null>(null);
   const [companyStats, setCompanyStats] = useState<EntityStats | null>(null);
+  const [activityStats, setActivityStats] = useState<ActivityStats | null>(null);
   const [loading, setLoading] = useState(true);
   useScrollRestoration('scroll:dashboard', !loading);
   const [logModal, setLogModal] = useState<{
@@ -46,16 +54,18 @@ export const DashboardPage: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [dueContactsData, stats, contactStatsData, companyStatsData] = await Promise.all([
+      const [dueContactsData, stats, contactStatsData, companyStatsData, activityData] = await Promise.all([
         contactApi.list({ due_only: true, limit: 10 }),
         reminderApi.getStats(),
         contactApi.getStats(),
         companyApi.getStats(),
+        dashboardApi.getActivity(30),
       ]);
       setDueContacts(dueContactsData.items);
       setReminderStats(stats);
       setContactStats(contactStatsData);
       setCompanyStats(companyStatsData);
+      setActivityStats(activityData);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
@@ -232,6 +242,61 @@ export const DashboardPage: React.FC = () => {
                     <strong>{companyStats.by_status[s] ?? 0}</strong> {STATUS_LABELS[s] ?? s}
                   </span>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activityStats && (
+          <div className="section">
+            <div className="section-header">
+              <h2>Activity (last {activityStats.days} days)</h2>
+            </div>
+
+            <div className="activity-chart">
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={activityStats.by_day}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={formatActivityDate}
+                    interval={Math.max(0, Math.floor(activityStats.by_day.length / 8) - 1)}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis allowDecimals={false} width={30} tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    labelFormatter={(value) => formatActivityDate(String(value))}
+                    formatter={(value) => [value, 'Activities']}
+                  />
+                  <Bar dataKey="count" fill="#667eea" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {activityStats.by_user.length > 0 && (
+              <div className="activity-by-user">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Created</th>
+                      <th>Edited</th>
+                      <th>Interactions</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activityStats.by_user.map((u) => (
+                      <tr key={u.user_id}>
+                        <td>{u.user_name}</td>
+                        <td>{u.created}</td>
+                        <td>{u.edited}</td>
+                        <td>{u.interactions}</td>
+                        <td><strong>{u.total}</strong></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

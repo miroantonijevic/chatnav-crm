@@ -130,6 +130,17 @@ export const ContactsListPage: React.FC = () => {
     setSearchParams(newParams);
   };
 
+  const hasActiveFilters = Boolean(search || status || dueOnly);
+
+  const handleClearFilters = () => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('search');
+    newParams.delete('status');
+    newParams.delete('due_only');
+    newParams.delete('page');
+    setSearchParams(newParams);
+  };
+
   const goToPage = (newPage: number) => {
     const newParams = new URLSearchParams(searchParams);
     if (newPage > 1) {
@@ -215,6 +226,12 @@ export const ContactsListPage: React.FC = () => {
             />
             Needs Follow-up Now
           </label>
+
+          {hasActiveFilters && (
+            <button type="button" className="btn-clear-filters" onClick={handleClearFilters}>
+              Clear filters
+            </button>
+          )}
         </div>
 
         {loading ? (
