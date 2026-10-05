@@ -145,6 +145,12 @@ export interface ReminderStats {
   check_interval_minutes: number;
 }
 
+export interface EntityStats {
+  total: number;
+  due_now: number;
+  by_status: Record<string, number>;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;

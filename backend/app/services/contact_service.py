@@ -3,9 +3,9 @@ Contact service for business logic
 """
 from typing import List, Optional
 from datetime import datetime, timezone
-from sqlalchemy import select, or_, and_, exists, func
+from sqlalchemy import select, or_, and_, exists, func, asc, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, aliased
 
 from app.models.contact import Contact, ContactContactDetail, RelationshipStatus
 from app.models.company import Company
@@ -101,6 +101,36 @@ class ContactService:
         return conditions
 
     @staticmethod
+    def _apply_sort(query, sort_by: str, sort_order: str):
+        """Apply a whitelisted sort column to the query. Returns None if sort_by is unrecognized."""
+        direction = desc if sort_order == "desc" else asc
+
+        if sort_by == "name":
+            return query.order_by(direction(Contact.first_name), direction(Contact.last_name))
+        if sort_by == "company":
+            company_alias = aliased(Company)
+            return query.outerjoin(company_alias, Contact.company_id == company_alias.id).order_by(
+                direction(func.lower(company_alias.name))
+            )
+        if sort_by == "owner":
+            owner_alias = aliased(User)
+            return query.outerjoin(owner_alias, Contact.owner_user_id == owner_alias.id).order_by(
+                direction(func.lower(owner_alias.full_name))
+            )
+        if sort_by == "created_by":
+            created_by_alias = aliased(User)
+            return query.outerjoin(created_by_alias, Contact.created_by_user_id == created_by_alias.id).order_by(
+                direction(func.lower(created_by_alias.full_name))
+            )
+        if sort_by == "status":
+            return query.order_by(direction(Contact.current_relationship_status))
+        if sort_by == "next_contact_due_at":
+            return query.order_by(direction(Contact.next_contact_due_at))
+        if sort_by == "created_at":
+            return query.order_by(direction(Contact.created_at))
+        return None
+
+    @staticmethod
     async def get_all(
         db: AsyncSession,
         user: User,
@@ -109,7 +139,9 @@ class ContactService:
         search: Optional[str] = None,
         status: Optional[RelationshipStatus] = None,
         due_only: bool = False,
-        upcoming_only: bool = False
+        upcoming_only: bool = False,
+        sort_by: Optional[str] = None,
+        sort_order: str = "asc",
     ) -> List[Contact]:
         """Get all contacts with filtering and pagination - all users can see all contacts"""
         conditions = ContactService._filter_conditions(search, status, due_only, upcoming_only)
@@ -121,7 +153,10 @@ class ContactService:
             joinedload(Contact.company)
         ).where(*conditions)
 
-        if upcoming_only:
+        sorted_query = ContactService._apply_sort(query, sort_by, sort_order) if sort_by else None
+        if sorted_query is not None:
+            query = sorted_query
+        elif upcoming_only:
             query = query.order_by(Contact.next_contact_due_at.asc())
         else:
             query = query.order_by(Contact.created_at.desc())
@@ -130,6 +165,31 @@ class ContactService:
 
         result = await db.execute(query)
         return list(result.unique().scalars().all())
+
+    @staticmethod
+    async def get_stats(db: AsyncSession, user: User) -> dict:
+        """Get overall contact counts: total, due now, and breakdown by status"""
+        now = datetime.now(timezone.utc)
+        base_condition = Contact.is_deleted == False
+
+        total_result = await db.execute(select(func.count(Contact.id)).where(base_condition))
+        total = total_result.scalar_one()
+
+        due_result = await db.execute(select(func.count(Contact.id)).where(
+            base_condition,
+            Contact.next_contact_due_at.isnot(None),
+            Contact.next_contact_due_at <= now,
+        ))
+        due_now = due_result.scalar_one()
+
+        status_result = await db.execute(
+            select(Contact.current_relationship_status, func.count(Contact.id))
+            .where(base_condition)
+            .group_by(Contact.current_relationship_status)
+        )
+        by_status = {status.value: count for status, count in status_result.all()}
+
+        return {"total": total, "due_now": due_now, "by_status": by_status}
 
     @staticmethod
     async def count_all(

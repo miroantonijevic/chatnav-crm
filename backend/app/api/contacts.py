@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.schemas.contact import ContactCreate, ContactUpdate, ContactResponse, ContactListResponse
+from app.schemas.contact import ContactCreate, ContactUpdate, ContactResponse, ContactListResponse, ContactStatsResponse
 from app.schemas.history import HistoryCreate, HistoryResponse, MarkContactedRequest
 from app.services.contact_service import ContactService
 from app.services.history_service import HistoryService
@@ -25,6 +25,8 @@ async def list_contacts(
     status: Optional[RelationshipStatus] = Query(None, description="Filter by relationship status"),
     due_only: bool = Query(False, description="Show only contacts with overdue/due follow-ups"),
     upcoming_only: bool = Query(False, description="Show only contacts with upcoming follow-ups"),
+    sort_by: Optional[str] = Query(None, description="Column to sort by"),
+    sort_order: str = Query("asc", pattern="^(asc|desc)$", description="Sort direction"),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -39,7 +41,9 @@ async def list_contacts(
         search=search,
         status=status,
         due_only=due_only,
-        upcoming_only=upcoming_only
+        upcoming_only=upcoming_only,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
     total = await ContactService.count_all(
         db,
@@ -50,6 +54,17 @@ async def list_contacts(
         upcoming_only=upcoming_only
     )
     return ContactListResponse(items=contacts, total=total)
+
+
+@router.get("/stats", response_model=ContactStatsResponse)
+async def get_contact_stats(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get overall contact counts: total, due now, and breakdown by status
+    """
+    return await ContactService.get_stats(db, current_user)
 
 
 @router.post("", response_model=ContactResponse, status_code=status.HTTP_201_CREATED)

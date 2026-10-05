@@ -93,6 +93,12 @@ class CompanyListResponse(BaseModel):
     total: int
 
 
+class CompanyStatsResponse(BaseModel):
+    total: int
+    due_now: int
+    by_status: dict
+
+
 class CompanyHistoryCreate(BaseModel):
     status: RelationshipStatus
     note: Optional[str] = None

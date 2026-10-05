@@ -5,8 +5,8 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MainLayout } from '../layouts/MainLayout';
 import { fromServer, fmtDateTime, localNow, dtDate, dtTime, dtCombine } from '../utils/dates';
-import { contactApi, reminderApi } from '../api';
-import { Contact, ReminderStats, RelationshipStatus } from '../types';
+import { contactApi, companyApi, reminderApi } from '../api';
+import { Contact, ReminderStats, RelationshipStatus, EntityStats } from '../types';
 import { useScrollRestoration } from '../utils/useScrollRestoration';
 import './Dashboard.css';
 
@@ -23,6 +23,8 @@ const STATUS_LABELS: Record<string, string> = {
 export const DashboardPage: React.FC = () => {
   const [dueContacts, setDueContacts] = useState<Contact[]>([]);
   const [reminderStats, setReminderStats] = useState<ReminderStats | null>(null);
+  const [contactStats, setContactStats] = useState<EntityStats | null>(null);
+  const [companyStats, setCompanyStats] = useState<EntityStats | null>(null);
   const [loading, setLoading] = useState(true);
   useScrollRestoration('scroll:dashboard', !loading);
   const [logModal, setLogModal] = useState<{
@@ -44,12 +46,16 @@ export const DashboardPage: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [dueContactsData, stats] = await Promise.all([
+      const [dueContactsData, stats, contactStatsData, companyStatsData] = await Promise.all([
         contactApi.list({ due_only: true, limit: 10 }),
         reminderApi.getStats(),
+        contactApi.getStats(),
+        companyApi.getStats(),
       ]);
       setDueContacts(dueContactsData.items);
       setReminderStats(stats);
+      setContactStats(contactStatsData);
+      setCompanyStats(companyStatsData);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
@@ -193,6 +199,43 @@ export const DashboardPage: React.FC = () => {
             </div>
           )}
         </div>
+
+        {(contactStats || companyStats) && (
+          <div className="dashboard-stats-summary">
+            {contactStats && (
+              <div className="stats-bar">
+                <span className="stats-bar-label">Contacts:</span>
+                <span className="stats-bar-item stats-bar-total">
+                  <strong>{contactStats.total}</strong> Total
+                </span>
+                <span className="stats-bar-item stats-bar-due">
+                  <strong>{contactStats.due_now}</strong> Due Now
+                </span>
+                {Object.values(RelationshipStatus).map((s) => (
+                  <span key={s} className="stats-bar-item">
+                    <strong>{contactStats.by_status[s] ?? 0}</strong> {STATUS_LABELS[s] ?? s}
+                  </span>
+                ))}
+              </div>
+            )}
+            {companyStats && (
+              <div className="stats-bar">
+                <span className="stats-bar-label">Companies:</span>
+                <span className="stats-bar-item stats-bar-total">
+                  <strong>{companyStats.total}</strong> Total
+                </span>
+                <span className="stats-bar-item stats-bar-due">
+                  <strong>{companyStats.due_now}</strong> Due Now
+                </span>
+                {Object.values(RelationshipStatus).map((s) => (
+                  <span key={s} className="stats-bar-item">
+                    <strong>{companyStats.by_status[s] ?? 0}</strong> {STATUS_LABELS[s] ?? s}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Log interaction modal */}

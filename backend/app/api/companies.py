@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.schemas.company import (
     CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse,
-    CompanyHistoryCreate, CompanyHistoryResponse, CompanyListItem,
+    CompanyHistoryCreate, CompanyHistoryResponse, CompanyListItem, CompanyStatsResponse,
 )
 from app.schemas.history import MarkContactedRequest
 from app.services.company_service import CompanyService
@@ -38,6 +38,8 @@ async def list_companies(
     search: Optional[str] = Query(None, description="Search in name or industry"),
     due_only: bool = False,
     upcoming_only: bool = False,
+    sort_by: Optional[str] = Query(None, description="Column to sort by"),
+    sort_order: str = Query("asc", pattern="^(asc|desc)$", description="Sort direction"),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -52,6 +54,8 @@ async def list_companies(
         search=search,
         due_only=due_only,
         upcoming_only=upcoming_only,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
     total = await CompanyService.count_all(
         db,
@@ -61,6 +65,17 @@ async def list_companies(
         upcoming_only=upcoming_only,
     )
     return CompanyListResponse(items=companies, total=total)
+
+
+@router.get("/stats", response_model=CompanyStatsResponse)
+async def get_company_stats(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get overall company counts: total, due now, and breakdown by status
+    """
+    return await CompanyService.get_stats(db, current_user)
 
 
 @router.post("", response_model=CompanyResponse, status_code=status.HTTP_201_CREATED)

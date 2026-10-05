@@ -106,3 +106,9 @@ class ContactWithOwner(ContactResponse):
 class ContactListResponse(BaseModel):
     items: List[ContactResponse]
     total: int
+
+
+class ContactStatsResponse(BaseModel):
+    total: int
+    due_now: int
+    by_status: dict

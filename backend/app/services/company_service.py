@@ -3,9 +3,9 @@ Company service for business logic
 """
 from typing import List, Optional
 from datetime import datetime, timezone
-from sqlalchemy import select, or_, and_, exists, func
+from sqlalchemy import select, or_, and_, exists, func, asc, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, aliased
 
 from app.models.company import Company, CompanyContactDetail, CompanyHistory
 from app.models.contact import RelationshipStatus
@@ -89,6 +89,33 @@ class CompanyService:
         return conditions
 
     @staticmethod
+    def _apply_sort(query, sort_by: str, sort_order: str):
+        """Apply a whitelisted sort column to the query. Returns None if sort_by is unrecognized."""
+        direction = desc if sort_order == "desc" else asc
+
+        if sort_by == "name":
+            return query.order_by(direction(func.lower(Company.name)))
+        if sort_by == "industry":
+            return query.order_by(direction(func.lower(Company.industry)))
+        if sort_by == "owner":
+            owner_alias = aliased(User)
+            return query.outerjoin(owner_alias, Company.owner_user_id == owner_alias.id).order_by(
+                direction(func.lower(owner_alias.full_name))
+            )
+        if sort_by == "created_by":
+            created_by_alias = aliased(User)
+            return query.outerjoin(created_by_alias, Company.created_by_user_id == created_by_alias.id).order_by(
+                direction(func.lower(created_by_alias.full_name))
+            )
+        if sort_by == "status":
+            return query.order_by(direction(Company.current_relationship_status))
+        if sort_by == "next_contact_due_at":
+            return query.order_by(direction(Company.next_contact_due_at))
+        if sort_by == "created_at":
+            return query.order_by(direction(Company.created_at))
+        return None
+
+    @staticmethod
     async def get_all(
         db: AsyncSession,
         user: User,
@@ -97,6 +124,8 @@ class CompanyService:
         search: Optional[str] = None,
         due_only: bool = False,
         upcoming_only: bool = False,
+        sort_by: Optional[str] = None,
+        sort_order: str = "asc",
     ) -> List[Company]:
         """Get all companies with filtering and pagination"""
         conditions = CompanyService._filter_conditions(search, due_only, upcoming_only)
@@ -107,7 +136,10 @@ class CompanyService:
             joinedload(Company.contact_details),
         ).where(*conditions)
 
-        if upcoming_only:
+        sorted_query = CompanyService._apply_sort(query, sort_by, sort_order) if sort_by else None
+        if sorted_query is not None:
+            query = sorted_query
+        elif upcoming_only:
             query = query.order_by(Company.next_contact_due_at.asc())
         else:
             query = query.order_by(Company.created_at.desc())
@@ -116,6 +148,31 @@ class CompanyService:
 
         result = await db.execute(query)
         return list(result.unique().scalars().all())
+
+    @staticmethod
+    async def get_stats(db: AsyncSession, user: User) -> dict:
+        """Get overall company counts: total, due now, and breakdown by status"""
+        now = datetime.now(timezone.utc)
+        base_condition = Company.is_deleted == False
+
+        total_result = await db.execute(select(func.count(Company.id)).where(base_condition))
+        total = total_result.scalar_one()
+
+        due_result = await db.execute(select(func.count(Company.id)).where(
+            base_condition,
+            Company.next_contact_due_at.isnot(None),
+            Company.next_contact_due_at <= now,
+        ))
+        due_now = due_result.scalar_one()
+
+        status_result = await db.execute(
+            select(Company.current_relationship_status, func.count(Company.id))
+            .where(base_condition)
+            .group_by(Company.current_relationship_status)
+        )
+        by_status = {status.value: count for status, count in status_result.all()}
+
+        return {"total": total, "due_now": due_now, "by_status": by_status}
 
     @staticmethod
     async def count_all(

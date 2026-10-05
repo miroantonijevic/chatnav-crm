@@ -6,7 +6,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '../layouts/MainLayout';
 import { fmtDateTime, fromServer } from '../utils/dates';
 import { companyApi } from '../api';
-import { Company } from '../types';
+import { Company, RelationshipStatus, EntityStats } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useScrollRestoration } from '../utils/useScrollRestoration';
 import './Contacts.css';
@@ -26,6 +26,7 @@ const PAGE_SIZE = 50;
 export const CompaniesListPage: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState<EntityStats | null>(null);
   const [loading, setLoading] = useState(true);
   useScrollRestoration('scroll:companies', !loading);
 
@@ -34,12 +35,18 @@ export const CompaniesListPage: React.FC = () => {
 
   const search = searchParams.get('search') || '';
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+  const sortBy = searchParams.get('sort_by') || '';
+  const sortOrder = searchParams.get('sort_order') === 'desc' ? 'desc' : 'asc';
 
   useEffect(() => {
     loadCompanies();
-  }, [search, page]);
+  }, [search, page, sortBy, sortOrder]);
 
-  // Reset to page 1 whenever the search term changes
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  // Reset to page 1 whenever the search term or sorting changes
   useEffect(() => {
     if (page !== 1) {
       const newParams = new URLSearchParams(searchParams);
@@ -47,7 +54,7 @@ export const CompaniesListPage: React.FC = () => {
       setSearchParams(newParams);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, sortBy, sortOrder]);
 
   const loadCompanies = async () => {
     setLoading(true);
@@ -56,6 +63,8 @@ export const CompaniesListPage: React.FC = () => {
         search: search || undefined,
         skip: (page - 1) * PAGE_SIZE,
         limit: PAGE_SIZE,
+        sort_by: sortBy || undefined,
+        sort_order: sortOrder,
       });
       setCompanies(data.items);
       setTotal(data.total);
@@ -65,6 +74,28 @@ export const CompaniesListPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const loadStats = async () => {
+    try {
+      const data = await companyApi.getStats();
+      setStats(data);
+    } catch (error) {
+      console.error('Failed to load company stats:', error);
+    }
+  };
+
+  const handleSort = (column: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (sortBy === column) {
+      newParams.set('sort_order', sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      newParams.set('sort_by', column);
+      newParams.set('sort_order', 'asc');
+    }
+    setSearchParams(newParams);
+  };
+
+  const sortArrow = (column: string) => (sortBy === column ? (sortOrder === 'asc' ? ' \u25b2' : ' \u25bc') : '');
 
   const handleSearchChange = (value: string) => {
     const newParams = new URLSearchParams(searchParams);
@@ -93,6 +124,7 @@ export const CompaniesListPage: React.FC = () => {
     try {
       await companyApi.delete(company.id);
       loadCompanies();
+      loadStats();
     } catch (error: any) {
       alert(error.message || 'Failed to delete company');
     }
@@ -118,6 +150,22 @@ export const CompaniesListPage: React.FC = () => {
           </Link>
         </div>
 
+        {stats && (
+          <div className="stats-bar">
+            <span className="stats-bar-item stats-bar-total">
+              <strong>{stats.total}</strong> Total
+            </span>
+            <span className="stats-bar-item stats-bar-due">
+              <strong>{stats.due_now}</strong> Due Now
+            </span>
+            {Object.values(RelationshipStatus).map((s) => (
+              <span key={s} className="stats-bar-item">
+                <strong>{stats.by_status[s] ?? 0}</strong> {STATUS_LABELS[s] ?? s}
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="filters">
           <input
             type="text"
@@ -140,12 +188,13 @@ export const CompaniesListPage: React.FC = () => {
             <table>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Industry</th>
-                  <th>Relationship Owner</th>
-                  <th>Created By</th>
-                  <th>Status</th>
-                  <th>Next Follow-up</th>
+                  <th className="sortable-header" onClick={() => handleSort('name')}>Name{sortArrow('name')}</th>
+                  <th className="sortable-header" onClick={() => handleSort('industry')}>Industry{sortArrow('industry')}</th>
+                  <th className="sortable-header" onClick={() => handleSort('owner')}>Relationship Owner{sortArrow('owner')}</th>
+                  <th className="sortable-header" onClick={() => handleSort('created_by')}>Created By{sortArrow('created_by')}</th>
+                  <th className="sortable-header" onClick={() => handleSort('created_at')}>Created At{sortArrow('created_at')}</th>
+                  <th className="sortable-header" onClick={() => handleSort('status')}>Status{sortArrow('status')}</th>
+                  <th className="sortable-header" onClick={() => handleSort('next_contact_due_at')}>Next Follow-up{sortArrow('next_contact_due_at')}</th>
                   <th>Websites</th>
                   <th>Phones</th>
                   <th>Emails</th>
@@ -171,6 +220,7 @@ export const CompaniesListPage: React.FC = () => {
                         {company.created_by_full_name || '-'}
                       </span>
                     </td>
+                    <td>{fmtDateTime(fromServer(company.created_at))}</td>
                     <td>
                       <span className="status-badge">
                         {STATUS_LABELS[company.current_relationship_status] ?? company.current_relationship_status}

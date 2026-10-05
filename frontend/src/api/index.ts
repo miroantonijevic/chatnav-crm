@@ -23,6 +23,7 @@ import type {
   CompanyUpdate,
   CompanyHistoryEntry,
   CompanyHistoryCreate,
+  EntityStats,
 } from '../types';
 
 // Auth endpoints
@@ -52,6 +53,8 @@ export const contactApi = {
     status?: string;
     due_only?: boolean;
     upcoming_only?: boolean;
+    sort_by?: string;
+    sort_order?: 'asc' | 'desc';
   }) => {
     const queryParams = new URLSearchParams();
     if (params?.skip) queryParams.append('skip', params.skip.toString());
@@ -60,6 +63,8 @@ export const contactApi = {
     if (params?.status) queryParams.append('status', params.status);
     if (params?.due_only) queryParams.append('due_only', 'true');
     if (params?.upcoming_only) queryParams.append('upcoming_only', 'true');
+    if (params?.sort_by) queryParams.append('sort_by', params.sort_by);
+    if (params?.sort_order) queryParams.append('sort_order', params.sort_order);
 
     const query = queryParams.toString();
     return apiClient.get<ContactListResponse>(`/contacts${query ? `?${query}` : ''}`);
@@ -73,17 +78,28 @@ export const contactApi = {
     apiClient.post<HistoryEntry>(`/contacts/${id}/history`, data),
   markContacted: (id: number, payload: { note?: string; status?: string; interaction_at?: string; next_contact_due_at?: string | null }) =>
     apiClient.post<HistoryEntry>(`/contacts/${id}/mark-contacted`, payload),
+  getStats: () => apiClient.get<EntityStats>('/contacts/stats'),
 };
 
 // Company endpoints
 export const companyApi = {
-  list: (params?: { skip?: number; limit?: number; search?: string; due_only?: boolean; upcoming_only?: boolean }) => {
+  list: (params?: {
+    skip?: number;
+    limit?: number;
+    search?: string;
+    due_only?: boolean;
+    upcoming_only?: boolean;
+    sort_by?: string;
+    sort_order?: 'asc' | 'desc';
+  }) => {
     const queryParams = new URLSearchParams();
     if (params?.skip) queryParams.append('skip', params.skip.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.search) queryParams.append('search', params.search);
     if (params?.due_only) queryParams.append('due_only', 'true');
     if (params?.upcoming_only) queryParams.append('upcoming_only', 'true');
+    if (params?.sort_by) queryParams.append('sort_by', params.sort_by);
+    if (params?.sort_order) queryParams.append('sort_order', params.sort_order);
     const query = queryParams.toString();
     return apiClient.get<CompanyListResponse>(`/companies${query ? `?${query}` : ''}`);
   },
@@ -97,6 +113,7 @@ export const companyApi = {
     apiClient.post<CompanyHistoryEntry>(`/companies/${id}/history`, data),
   markContacted: (id: number, payload: { note?: string; status?: string; interaction_at?: string; next_contact_due_at?: string | null }) =>
     apiClient.post<CompanyHistoryEntry>(`/companies/${id}/mark-contacted`, payload),
+  getStats: () => apiClient.get<EntityStats>('/companies/stats'),
 };
 
 // Reminder endpoints
