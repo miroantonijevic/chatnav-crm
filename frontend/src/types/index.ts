@@ -151,6 +151,11 @@ export interface EntityStats {
   by_status: Record<string, number>;
 }
 
+export interface ActivityByDay {
+  date: string;
+  count: number;
+}
+
 export interface ActivityByUser {
   user_id: number;
   user_name: string;
@@ -158,11 +163,7 @@ export interface ActivityByUser {
   edited: number;
   interactions: number;
   total: number;
-}
-
-export interface ActivityByDay {
-  date: string;
-  count: number;
+  by_day: ActivityByDay[];
 }
 
 export interface ActivityStats {

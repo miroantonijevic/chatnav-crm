@@ -27,12 +27,16 @@ const formatActivityDate = (value: string): string => {
   return `${day}.${month}`;
 };
 
+const ACTIVITY_RANGE_OPTIONS = [7, 14, 30, 60, 90];
+
 export const DashboardPage: React.FC = () => {
   const [dueContacts, setDueContacts] = useState<Contact[]>([]);
   const [reminderStats, setReminderStats] = useState<ReminderStats | null>(null);
   const [contactStats, setContactStats] = useState<EntityStats | null>(null);
   const [companyStats, setCompanyStats] = useState<EntityStats | null>(null);
   const [activityStats, setActivityStats] = useState<ActivityStats | null>(null);
+  const [activityDays, setActivityDays] = useState(30);
+  const [activityLoading, setActivityLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   useScrollRestoration('scroll:dashboard', !loading);
   const [logModal, setLogModal] = useState<{
@@ -52,24 +56,39 @@ export const DashboardPage: React.FC = () => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    loadActivity(activityDays);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activityDays]);
+
   const loadData = async () => {
     try {
-      const [dueContactsData, stats, contactStatsData, companyStatsData, activityData] = await Promise.all([
+      const [dueContactsData, stats, contactStatsData, companyStatsData] = await Promise.all([
         contactApi.list({ due_only: true, limit: 10 }),
         reminderApi.getStats(),
         contactApi.getStats(),
         companyApi.getStats(),
-        dashboardApi.getActivity(30),
       ]);
       setDueContacts(dueContactsData.items);
       setReminderStats(stats);
       setContactStats(contactStatsData);
       setCompanyStats(companyStatsData);
-      setActivityStats(activityData);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadActivity = async (days: number) => {
+    setActivityLoading(true);
+    try {
+      const activityData = await dashboardApi.getActivity(days);
+      setActivityStats(activityData);
+    } catch (error) {
+      console.error('Failed to load activity stats:', error);
+    } finally {
+      setActivityLoading(false);
     }
   };
 
@@ -251,9 +270,21 @@ export const DashboardPage: React.FC = () => {
           <div className="section">
             <div className="section-header">
               <h2>Activity (last {activityStats.days} days)</h2>
+              <div className="activity-range-selector">
+                {ACTIVITY_RANGE_OPTIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={d === activityDays ? 'active' : ''}
+                    onClick={() => setActivityDays(d)}
+                  >
+                    {d}d
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="activity-chart">
+            <div className={`activity-chart${activityLoading ? ' activity-loading' : ''}`}>
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={activityStats.by_day}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -275,28 +306,31 @@ export const DashboardPage: React.FC = () => {
 
             {activityStats.by_user.length > 0 && (
               <div className="activity-by-user">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Created</th>
-                      <th>Edited</th>
-                      <th>Interactions</th>
-                      <th>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activityStats.by_user.map((u) => (
-                      <tr key={u.user_id}>
-                        <td>{u.user_name}</td>
-                        <td>{u.created}</td>
-                        <td>{u.edited}</td>
-                        <td>{u.interactions}</td>
-                        <td><strong>{u.total}</strong></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <h3>By user</h3>
+                {activityStats.by_user.map((u) => (
+                  <div className="activity-user-row" key={u.user_id}>
+                    <div className="activity-user-header">
+                      <span className="activity-user-name">{u.user_name}</span>
+                      <span className="activity-user-counts">
+                        <span className="stats-bar-item"><strong>{u.created}</strong> Created</span>
+                        <span className="stats-bar-item"><strong>{u.edited}</strong> Edited</span>
+                        <span className="stats-bar-item"><strong>{u.interactions}</strong> Interactions</span>
+                        <span className="stats-bar-item stats-bar-total"><strong>{u.total}</strong> Total</span>
+                      </span>
+                    </div>
+                    <ResponsiveContainer width="100%" height={70}>
+                      <BarChart data={u.by_day}>
+                        <XAxis dataKey="date" hide />
+                        <YAxis hide allowDecimals={false} />
+                        <Tooltip
+                          labelFormatter={(value) => formatActivityDate(String(value))}
+                          formatter={(value) => [value, 'Activities']}
+                        />
+                        <Bar dataKey="count" fill="#764ba2" radius={[2, 2, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ))}
               </div>
             )}
           </div>

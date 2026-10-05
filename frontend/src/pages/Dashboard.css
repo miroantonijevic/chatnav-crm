@@ -85,24 +85,81 @@
 
 .activity-chart {
   margin-bottom: 1.5rem;
+  transition: opacity 0.15s ease;
 }
 
-.activity-by-user table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
+.activity-chart.activity-loading {
+  opacity: 0.4;
 }
 
-.activity-by-user th,
-.activity-by-user td {
-  text-align: left;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #eee;
+.activity-range-selector {
+  display: flex;
+  gap: 0.35rem;
 }
 
-.activity-by-user th {
-  color: #7f8c8d;
+.activity-range-selector button {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  color: #495057;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.activity-range-selector button:hover {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.activity-range-selector button.active {
+  background: #667eea;
+  border-color: #667eea;
+  color: white;
+}
+
+.activity-by-user h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  color: #2c3e50;
+}
+
+.activity-user-row {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.activity-user-row:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.activity-user-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.activity-user-name {
   font-weight: 600;
+  color: #2c3e50;
+}
+
+.activity-user-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+  color: #495057;
+}
+
+.activity-user-counts strong {
+  color: #2c3e50;
+  margin-right: 0.2rem;
 }
 
 .section-header {

@@ -5,6 +5,11 @@ from typing import List
 from pydantic import BaseModel
 
 
+class ActivityByDay(BaseModel):
+    date: str
+    count: int
+
+
 class ActivityByUser(BaseModel):
     user_id: int
     user_name: str
@@ -12,11 +17,7 @@ class ActivityByUser(BaseModel):
     edited: int
     interactions: int
     total: int
-
-
-class ActivityByDay(BaseModel):
-    date: str
-    count: int
+    by_day: List[ActivityByDay]
 
 
 class ActivityStatsResponse(BaseModel):
