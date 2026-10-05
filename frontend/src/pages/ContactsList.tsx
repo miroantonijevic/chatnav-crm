@@ -11,8 +11,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useScrollRestoration } from '../utils/useScrollRestoration';
 import './Contacts.css';
 
+const PAGE_SIZE = 50;
+
 export const ContactsListPage: React.FC = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   useScrollRestoration('scroll:contacts', !loading);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -21,9 +24,20 @@ export const ContactsListPage: React.FC = () => {
   const search = searchParams.get('search') || '';
   const status = searchParams.get('status') || '';
   const dueOnly = searchParams.get('due_only') === 'true';
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
 
   useEffect(() => {
     loadContacts();
+  }, [search, status, dueOnly, page]);
+
+  // Reset to page 1 whenever filters change
+  useEffect(() => {
+    if (page !== 1) {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('page');
+      setSearchParams(newParams);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, status, dueOnly]);
 
   const loadContacts = async () => {
@@ -33,8 +47,11 @@ export const ContactsListPage: React.FC = () => {
         search: search || undefined,
         status: status || undefined,
         due_only: dueOnly,
+        skip: (page - 1) * PAGE_SIZE,
+        limit: PAGE_SIZE,
       });
-      setContacts(data);
+      setContacts(data.items);
+      setTotal(data.total);
     } catch (error) {
       console.error('Failed to load contacts:', error);
     } finally {
@@ -71,6 +88,18 @@ export const ContactsListPage: React.FC = () => {
     }
     setSearchParams(newParams);
   };
+
+  const goToPage = (newPage: number) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (newPage > 1) {
+      newParams.set('page', newPage.toString());
+    } else {
+      newParams.delete('page');
+    }
+    setSearchParams(newParams);
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const handleDelete = async (contact: Contact) => {
     if (!confirm(`Are you sure you want to delete ${contact.first_name} ${contact.last_name}?`)) return;
@@ -212,6 +241,33 @@ export const ContactsListPage: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {!loading && total > 0 && (
+          <div className="pagination">
+            <span className="pagination-info">
+              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
+            </span>
+            <div className="pagination-controls">
+              <button
+                className="btn-link-small"
+                disabled={page <= 1}
+                onClick={() => goToPage(page - 1)}
+              >
+                ← Previous
+              </button>
+              <span className="pagination-page">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                className="btn-link-small"
+                disabled={page >= totalPages}
+                onClick={() => goToPage(page + 1)}
+              >
+                Next →
+              </button>
+            </div>
           </div>
         )}
       </div>

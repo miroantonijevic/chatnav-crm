@@ -84,8 +84,8 @@ export const ContactDetailPage: React.FC = () => {
     nameSearchTimer.current = setTimeout(async () => {
       try {
         const results = await contactApi.list({ search: value.trim(), limit: 5 });
-        setNameSuggestions(results);
-        setShowSuggestions(results.length > 0);
+        setNameSuggestions(results.items);
+        setShowSuggestions(results.items.length > 0);
       } catch {
         // silently ignore
       }
@@ -377,29 +377,18 @@ export const ContactDetailPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="company_id">Company</label>
-                <select
-                  id="company_id"
-                  value={formData.company_id ?? ''}
-                  onChange={(e) => setFormData({ ...formData, company_id: e.target.value ? parseInt(e.target.value) : undefined })}
-                >
-                  <option value="">— No company —</option>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label htmlFor="job_title">Job Title</label>
-                <input
-                  id="job_title"
-                  type="text"
-                  value={formData.job_title}
-                  onChange={(e) => setFormData({ ...formData, job_title: e.target.value })}
-                />
-              </div>
+            <div className="form-group">
+              <label htmlFor="company_id">Company</label>
+              <select
+                id="company_id"
+                value={formData.company_id ?? ''}
+                onChange={(e) => setFormData({ ...formData, company_id: e.target.value ? parseInt(e.target.value) : undefined })}
+              >
+                <option value="">— No company —</option>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
             </div>
 
             {(['email', 'phone'] as const).map((type) => {
@@ -635,10 +624,6 @@ export const ContactDetailPage: React.FC = () => {
                     <div className="info-item">
                       <label>Company</label>
                       <span>{contact?.company_name || '-'}</span>
-                    </div>
-                    <div className="info-item">
-                      <label>Job Title</label>
-                      <span>{contact?.job_title || '-'}</span>
                     </div>
                     <div className="info-item">
                       <label>Relationship Owner</label>

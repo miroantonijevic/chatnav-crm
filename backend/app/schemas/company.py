@@ -88,6 +88,11 @@ class CompanyListItem(BaseModel):
         from_attributes = True
 
 
+class CompanyListResponse(BaseModel):
+    items: List[CompanyResponse]
+    total: int
+
+
 class CompanyHistoryCreate(BaseModel):
     status: RelationshipStatus
     note: Optional[str] = None

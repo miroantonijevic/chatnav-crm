@@ -145,6 +145,13 @@ export interface ReminderStats {
   check_interval_minutes: number;
 }
 
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+}
+
+export type ContactListResponse = PaginatedResponse<Contact>;
+
 export interface CompanyContactDetail {
   id: number;
   type: 'website' | 'phone' | 'email' | 'address';
@@ -224,3 +231,5 @@ export interface CompanyHistoryCreate {
   interaction_at: string;
   next_contact_due_at?: string;
 }
+
+export type CompanyListResponse = PaginatedResponse<Company>;

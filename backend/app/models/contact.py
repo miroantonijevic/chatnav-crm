@@ -56,6 +56,9 @@ class Contact(Base):
     next_contact_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

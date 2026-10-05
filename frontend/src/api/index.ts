@@ -12,11 +12,13 @@ import type {
   Contact,
   ContactCreate,
   ContactUpdate,
+  ContactListResponse,
   HistoryEntry,
   HistoryCreate,
   ReminderStats,
   Company,
   CompanyListItem,
+  CompanyListResponse,
   CompanyCreate,
   CompanyUpdate,
   CompanyHistoryEntry,
@@ -60,7 +62,7 @@ export const contactApi = {
     if (params?.upcoming_only) queryParams.append('upcoming_only', 'true');
 
     const query = queryParams.toString();
-    return apiClient.get<Contact[]>(`/contacts${query ? `?${query}` : ''}`);
+    return apiClient.get<ContactListResponse>(`/contacts${query ? `?${query}` : ''}`);
   },
   create: (data: ContactCreate) => apiClient.post<Contact>('/contacts', data),
   get: (id: number) => apiClient.get<Contact>(`/contacts/${id}`),
@@ -75,14 +77,15 @@ export const contactApi = {
 
 // Company endpoints
 export const companyApi = {
-  list: (params?: { search?: string; due_only?: boolean; upcoming_only?: boolean; limit?: number }) => {
+  list: (params?: { skip?: number; limit?: number; search?: string; due_only?: boolean; upcoming_only?: boolean }) => {
     const queryParams = new URLSearchParams();
+    if (params?.skip) queryParams.append('skip', params.skip.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.search) queryParams.append('search', params.search);
     if (params?.due_only) queryParams.append('due_only', 'true');
     if (params?.upcoming_only) queryParams.append('upcoming_only', 'true');
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
     const query = queryParams.toString();
-    return apiClient.get<Company[]>(`/companies${query ? `?${query}` : ''}`);
+    return apiClient.get<CompanyListResponse>(`/companies${query ? `?${query}` : ''}`);
   },
   listSimple: () => apiClient.get<CompanyListItem[]>('/companies/list/simple'),
   create: (data: CompanyCreate) => apiClient.post<Company>('/companies', data),

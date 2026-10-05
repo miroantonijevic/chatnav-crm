@@ -218,8 +218,8 @@ export const CompanyDetailPage: React.FC = () => {
     nameSearchTimer.current = setTimeout(async () => {
       try {
         const results = await companyApi.list({ search: value.trim(), limit: 5 });
-        setNameSuggestions(results);
-        setShowSuggestions(results.length > 0);
+        setNameSuggestions(results.items);
+        setShowSuggestions(results.items.length > 0);
       } catch {
         // silently ignore search errors
       }

@@ -3,7 +3,7 @@ Company service for business logic
 """
 from typing import List, Optional
 from datetime import datetime, timezone
-from sqlalchemy import select, or_, and_, exists
+from sqlalchemy import select, or_, and_, exists, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -24,27 +24,19 @@ class CompanyService:
             joinedload(Company.owner),
             joinedload(Company.created_by),
             joinedload(Company.contact_details),
-        ).where(Company.id == company_id)
+        ).where(Company.id == company_id, Company.is_deleted == False)
 
         result = await db.execute(query)
         return result.unique().scalar_one_or_none()
 
     @staticmethod
-    async def get_all(
-        db: AsyncSession,
-        user: User,
-        skip: int = 0,
-        limit: int = 100,
+    def _filter_conditions(
         search: Optional[str] = None,
         due_only: bool = False,
         upcoming_only: bool = False,
-    ) -> List[Company]:
-        """Get all companies with filtering and pagination"""
-        query = select(Company).options(
-            joinedload(Company.owner),
-            joinedload(Company.created_by),
-            joinedload(Company.contact_details),
-        )
+    ) -> list:
+        """Build the list of WHERE conditions shared by get_all and count_all"""
+        conditions = [Company.is_deleted == False]
 
         if search:
             search_pattern = f"%{search}%"
@@ -66,7 +58,7 @@ class CompanyService:
                     CompanyContactDetail.value.ilike(search_pattern)
                 )
             )
-            query = query.where(
+            conditions.append(
                 or_(
                     Company.name.ilike(search_pattern),
                     Company.industry.ilike(search_pattern),
@@ -79,7 +71,7 @@ class CompanyService:
         now = datetime.now(timezone.utc)
 
         if due_only:
-            query = query.where(
+            conditions.append(
                 and_(
                     Company.next_contact_due_at.isnot(None),
                     Company.next_contact_due_at <= now
@@ -87,12 +79,35 @@ class CompanyService:
             )
 
         if upcoming_only:
-            query = query.where(
+            conditions.append(
                 and_(
                     Company.next_contact_due_at.isnot(None),
                     Company.next_contact_due_at > now
                 )
             )
+
+        return conditions
+
+    @staticmethod
+    async def get_all(
+        db: AsyncSession,
+        user: User,
+        skip: int = 0,
+        limit: int = 100,
+        search: Optional[str] = None,
+        due_only: bool = False,
+        upcoming_only: bool = False,
+    ) -> List[Company]:
+        """Get all companies with filtering and pagination"""
+        conditions = CompanyService._filter_conditions(search, due_only, upcoming_only)
+
+        query = select(Company).options(
+            joinedload(Company.owner),
+            joinedload(Company.created_by),
+            joinedload(Company.contact_details),
+        ).where(*conditions)
+
+        if upcoming_only:
             query = query.order_by(Company.next_contact_due_at.asc())
         else:
             query = query.order_by(Company.created_at.desc())
@@ -103,9 +118,23 @@ class CompanyService:
         return list(result.unique().scalars().all())
 
     @staticmethod
+    async def count_all(
+        db: AsyncSession,
+        user: User,
+        search: Optional[str] = None,
+        due_only: bool = False,
+        upcoming_only: bool = False,
+    ) -> int:
+        """Count companies matching the same filters as get_all, ignoring skip/limit"""
+        conditions = CompanyService._filter_conditions(search, due_only, upcoming_only)
+        query = select(func.count(Company.id)).where(*conditions)
+        result = await db.execute(query)
+        return result.scalar_one()
+
+    @staticmethod
     async def get_all_simple(db: AsyncSession) -> List[Company]:
         """Get all companies ordered by name (for dropdowns)"""
-        query = select(Company).order_by(Company.name.asc())
+        query = select(Company).where(Company.is_deleted == False).order_by(Company.name.asc())
         result = await db.execute(query)
         return list(result.scalars().all())
 
@@ -220,8 +249,9 @@ class CompanyService:
 
     @staticmethod
     async def delete(db: AsyncSession, company: Company) -> None:
-        """Delete a company"""
-        await db.delete(company)
+        """Soft-delete a company (keeps history/records, just hides it from normal views)"""
+        company.is_deleted = True
+        company.deleted_at = datetime.utcnow()
         await db.commit()
 
     @staticmethod
@@ -231,7 +261,8 @@ class CompanyService:
             and_(
                 Company.next_contact_due_at.isnot(None),
                 Company.next_contact_due_at <= datetime.now(timezone.utc),
-                Company.reminders_enabled == True
+                Company.reminders_enabled == True,
+                Company.is_deleted == False
             )
         ).options(
             joinedload(Company.owner),

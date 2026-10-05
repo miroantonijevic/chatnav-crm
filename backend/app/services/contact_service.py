@@ -3,7 +3,7 @@ Contact service for business logic
 """
 from typing import List, Optional
 from datetime import datetime, timezone
-from sqlalchemy import select, or_, and_, exists
+from sqlalchemy import select, or_, and_, exists, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -25,29 +25,20 @@ class ContactService:
             joinedload(Contact.created_by),
             joinedload(Contact.contact_details),
             joinedload(Contact.company)
-        ).where(Contact.id == contact_id)
+        ).where(Contact.id == contact_id, Contact.is_deleted == False)
 
         result = await db.execute(query)
         return result.unique().scalar_one_or_none()
 
     @staticmethod
-    async def get_all(
-        db: AsyncSession,
-        user: User,
-        skip: int = 0,
-        limit: int = 100,
+    def _filter_conditions(
         search: Optional[str] = None,
         status: Optional[RelationshipStatus] = None,
         due_only: bool = False,
-        upcoming_only: bool = False
-    ) -> List[Contact]:
-        """Get all contacts with filtering and pagination - all users can see all contacts"""
-        query = select(Contact).options(
-            joinedload(Contact.owner),
-            joinedload(Contact.created_by),
-            joinedload(Contact.contact_details),
-            joinedload(Contact.company)
-        )
+        upcoming_only: bool = False,
+    ) -> list:
+        """Build the list of WHERE conditions shared by get_all and count_all"""
+        conditions = [Contact.is_deleted == False]
 
         if search:
             search_pattern = f"%{search}%"
@@ -75,7 +66,7 @@ class ContactService:
                     ContactContactDetail.value.ilike(search_pattern)
                 )
             )
-            query = query.where(
+            conditions.append(
                 or_(
                     Contact.first_name.ilike(search_pattern),
                     Contact.last_name.ilike(search_pattern),
@@ -87,12 +78,12 @@ class ContactService:
             )
 
         if status:
-            query = query.where(Contact.current_relationship_status == status)
+            conditions.append(Contact.current_relationship_status == status)
 
         now = datetime.now(timezone.utc)
 
         if due_only:
-            query = query.where(
+            conditions.append(
                 and_(
                     Contact.next_contact_due_at.isnot(None),
                     Contact.next_contact_due_at <= now
@@ -100,12 +91,37 @@ class ContactService:
             )
 
         if upcoming_only:
-            query = query.where(
+            conditions.append(
                 and_(
                     Contact.next_contact_due_at.isnot(None),
                     Contact.next_contact_due_at > now
                 )
             )
+
+        return conditions
+
+    @staticmethod
+    async def get_all(
+        db: AsyncSession,
+        user: User,
+        skip: int = 0,
+        limit: int = 100,
+        search: Optional[str] = None,
+        status: Optional[RelationshipStatus] = None,
+        due_only: bool = False,
+        upcoming_only: bool = False
+    ) -> List[Contact]:
+        """Get all contacts with filtering and pagination - all users can see all contacts"""
+        conditions = ContactService._filter_conditions(search, status, due_only, upcoming_only)
+
+        query = select(Contact).options(
+            joinedload(Contact.owner),
+            joinedload(Contact.created_by),
+            joinedload(Contact.contact_details),
+            joinedload(Contact.company)
+        ).where(*conditions)
+
+        if upcoming_only:
             query = query.order_by(Contact.next_contact_due_at.asc())
         else:
             query = query.order_by(Contact.created_at.desc())
@@ -114,6 +130,21 @@ class ContactService:
 
         result = await db.execute(query)
         return list(result.unique().scalars().all())
+
+    @staticmethod
+    async def count_all(
+        db: AsyncSession,
+        user: User,
+        search: Optional[str] = None,
+        status: Optional[RelationshipStatus] = None,
+        due_only: bool = False,
+        upcoming_only: bool = False
+    ) -> int:
+        """Count contacts matching the same filters as get_all, ignoring skip/limit"""
+        conditions = ContactService._filter_conditions(search, status, due_only, upcoming_only)
+        query = select(func.count(Contact.id)).where(*conditions)
+        result = await db.execute(query)
+        return result.scalar_one()
 
     @staticmethod
     async def create(db: AsyncSession, contact_create: ContactCreate, user: User) -> Contact:
@@ -218,8 +249,9 @@ class ContactService:
 
     @staticmethod
     async def delete(db: AsyncSession, contact: Contact) -> None:
-        """Delete a contact"""
-        await db.delete(contact)
+        """Soft-delete a contact (keeps history/records, just hides it from normal views)"""
+        contact.is_deleted = True
+        contact.deleted_at = datetime.utcnow()
         await db.commit()
 
     @staticmethod
@@ -229,7 +261,8 @@ class ContactService:
             and_(
                 Contact.next_contact_due_at.isnot(None),
                 Contact.next_contact_due_at <= datetime.now(timezone.utc),
-                Contact.reminders_enabled == True
+                Contact.reminders_enabled == True,
+                Contact.is_deleted == False
             )
         ).options(
             joinedload(Contact.owner),

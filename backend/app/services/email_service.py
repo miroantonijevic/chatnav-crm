@@ -5,11 +5,15 @@ import logging
 import aiosmtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import List
+from typing import List, Optional, Tuple
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Reason code returned by send_email() when SMTP is not configured (used to tell
+# a deliberate "not configured" skip apart from a genuine send failure)
+NOT_CONFIGURED = "not_configured"
 
 
 class EmailService:
@@ -21,7 +25,7 @@ class EmailService:
         subject: str,
         body: str,
         html_body: str = None,
-    ) -> bool:
+    ) -> Tuple[bool, Optional[str]]:
         """
         Send an email to recipients.
 
@@ -32,12 +36,14 @@ class EmailService:
             html_body: Optional HTML email body
 
         Returns:
-            True if email was sent successfully, False otherwise
+            Tuple of (success, error_reason). error_reason is None on success,
+            NOT_CONFIGURED when SMTP settings are missing, or the exception
+            message when the actual send attempt failed.
         """
         if not settings.SMTP_HOST or not settings.SMTP_PORT:
             logger.warning("SMTP not configured. Skipping email send.")
             logger.debug("Subject: %s | To: %s", subject, ", ".join(to_emails))
-            return False
+            return False, NOT_CONFIGURED
 
         try:
             msg = MIMEMultipart("alternative")
@@ -57,11 +63,11 @@ class EmailService:
                 start_tls=settings.SMTP_START_TLS,
             )
             logger.info("Email sent successfully to %s", ", ".join(to_emails))
-            return True
+            return True, None
 
         except Exception as e:
-            logger.error("Failed to send email: %s", e)
-            return False
+            logger.error("Failed to send email to %s: %s", ", ".join(to_emails), e)
+            return False, str(e)
 
     @staticmethod
     def format_reminder_email(

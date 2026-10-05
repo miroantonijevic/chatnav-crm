@@ -101,3 +101,8 @@ class ContactResponse(ContactBase):
 class ContactWithOwner(ContactResponse):
     owner_email: str
     owner_full_name: str
+
+
+class ContactListResponse(BaseModel):
+    items: List[ContactResponse]
+    total: int

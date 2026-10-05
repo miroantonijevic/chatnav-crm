@@ -21,8 +21,11 @@ const STATUS_LABELS: Record<string, string> = {
   inactive: 'Inactive',
 };
 
+const PAGE_SIZE = 50;
+
 export const CompaniesListPage: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   useScrollRestoration('scroll:companies', !loading);
 
@@ -30,16 +33,32 @@ export const CompaniesListPage: React.FC = () => {
   const { user } = useAuth();
 
   const search = searchParams.get('search') || '';
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
 
   useEffect(() => {
     loadCompanies();
+  }, [search, page]);
+
+  // Reset to page 1 whenever the search term changes
+  useEffect(() => {
+    if (page !== 1) {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('page');
+      setSearchParams(newParams);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
   const loadCompanies = async () => {
     setLoading(true);
     try {
-      const data = await companyApi.list({ search: search || undefined });
-      setCompanies(data);
+      const data = await companyApi.list({
+        search: search || undefined,
+        skip: (page - 1) * PAGE_SIZE,
+        limit: PAGE_SIZE,
+      });
+      setCompanies(data.items);
+      setTotal(data.total);
     } catch (error) {
       console.error('Failed to load companies:', error);
     } finally {
@@ -56,6 +75,18 @@ export const CompaniesListPage: React.FC = () => {
     }
     setSearchParams(newParams);
   };
+
+  const goToPage = (newPage: number) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (newPage > 1) {
+      newParams.set('page', newPage.toString());
+    } else {
+      newParams.delete('page');
+    }
+    setSearchParams(newParams);
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const handleDelete = async (company: Company) => {
     if (!confirm(`Are you sure you want to delete ${company.name}?`)) return;
@@ -175,6 +206,33 @@ export const CompaniesListPage: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {!loading && total > 0 && (
+          <div className="pagination">
+            <span className="pagination-info">
+              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
+            </span>
+            <div className="pagination-controls">
+              <button
+                className="btn-link-small"
+                disabled={page <= 1}
+                onClick={() => goToPage(page - 1)}
+              >
+                ← Previous
+              </button>
+              <span className="pagination-page">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                className="btn-link-small"
+                disabled={page >= totalPages}
+                onClick={() => goToPage(page + 1)}
+              >
+                Next →
+              </button>
+            </div>
           </div>
         )}
       </div>

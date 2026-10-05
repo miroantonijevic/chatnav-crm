@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.schemas.contact import ContactCreate, ContactUpdate, ContactResponse
+from app.schemas.contact import ContactCreate, ContactUpdate, ContactResponse, ContactListResponse
 from app.schemas.history import HistoryCreate, HistoryResponse, MarkContactedRequest
 from app.services.contact_service import ContactService
 from app.services.history_service import HistoryService
@@ -17,7 +17,7 @@ from app.models.contact import RelationshipStatus
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
 
 
-@router.get("", response_model=List[ContactResponse])
+@router.get("", response_model=ContactListResponse)
 async def list_contacts(
     skip: int = 0,
     limit: int = 100,
@@ -41,7 +41,15 @@ async def list_contacts(
         due_only=due_only,
         upcoming_only=upcoming_only
     )
-    return contacts
+    total = await ContactService.count_all(
+        db,
+        user=current_user,
+        search=search,
+        status=status,
+        due_only=due_only,
+        upcoming_only=upcoming_only
+    )
+    return ContactListResponse(items=contacts, total=total)
 
 
 @router.post("", response_model=ContactResponse, status_code=status.HTTP_201_CREATED)

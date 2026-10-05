@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.schemas.company import (
-    CompanyCreate, CompanyUpdate, CompanyResponse,
+    CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse,
     CompanyHistoryCreate, CompanyHistoryResponse, CompanyListItem,
 )
 from app.schemas.history import MarkContactedRequest
@@ -31,7 +31,7 @@ async def list_companies_simple(
     return companies
 
 
-@router.get("", response_model=List[CompanyResponse])
+@router.get("", response_model=CompanyListResponse)
 async def list_companies(
     skip: int = 0,
     limit: int = 100,
@@ -53,7 +53,14 @@ async def list_companies(
         due_only=due_only,
         upcoming_only=upcoming_only,
     )
-    return companies
+    total = await CompanyService.count_all(
+        db,
+        user=current_user,
+        search=search,
+        due_only=due_only,
+        upcoming_only=upcoming_only,
+    )
+    return CompanyListResponse(items=companies, total=total)
 
 
 @router.post("", response_model=CompanyResponse, status_code=status.HTTP_201_CREATED)
