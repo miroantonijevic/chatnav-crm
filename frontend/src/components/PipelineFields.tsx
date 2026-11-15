@@ -1,10 +1,10 @@
 /**
- * Pipeline / deal form fields (priority, next action, stage, waiting on, value),
+ * Pipeline / deal form fields (hot lead, next action, stage, waiting on, value),
  * shared by the contact and company edit forms.
  */
 import React, { useEffect, useState } from 'react';
-import { DealFields, DealPeriod, DealStage, Priority, WaitingOn } from '../types';
-import { PERIOD_META, PRIORITY_META, PRIORITY_ORDER, STAGE_META, STAGE_ORDER, WAITING_META, amountToInput, parseAmount } from '../utils/pipeline';
+import { DealFields, DealPeriod, DealStage, WaitingOn } from '../types';
+import { PERIOD_META, STAGE_META, STAGE_ORDER, WAITING_META, amountToInput, parseAmount } from '../utils/pipeline';
 
 interface Props {
   values: DealFields;
@@ -23,17 +23,12 @@ export const PipelineFields: React.FC<Props> = ({ values, onChange }) => {
 
   return (
     <div className="pipeline-fields">
-      <div className="form-grid form-grid-3">
-        <div className="field">
-          <label htmlFor="priority">Priority</label>
-          <select id="priority" value={values.priority ?? ''} onChange={(e) => onChange({ priority: (e.target.value || null) as Priority | null })}>
-            <option value="">Not in pipeline</option>
-            {PRIORITY_ORDER.map((p) => (
-              <option key={p} value={p}>{PRIORITY_META[p].emoji} {PRIORITY_META[p].label}</option>
-            ))}
-          </select>
-        </div>
+      <label className="check">
+        <input type="checkbox" checked={!!values.is_hot} onChange={(e) => onChange({ is_hot: e.target.checked })} />
+        <span>🔥 Hot lead <span className="hint">– show it in the Hot leads list</span></span>
+      </label>
 
+      <div className="form-grid">
         <div className="field">
           <label htmlFor="deal_stage">Deal stage</label>
           <select id="deal_stage" value={values.deal_stage ?? ''} onChange={(e) => onChange({ deal_stage: (e.target.value || null) as DealStage | null })}>

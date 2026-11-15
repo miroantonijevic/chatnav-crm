@@ -1,42 +1,32 @@
 /**
- * Dashboard widget: the hottest items in the pipeline and the user's favourites,
- * with their next action and follow-up status. Links through to the Pipeline page.
+ * Dashboard widget: the hot leads with their next action and follow-up status.
+ * Links through to the full Hot leads page.
  */
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { pipelineApi } from '../api';
-import { PipelineItem, PipelineSummary, Priority } from '../types';
-import { PriorityBadge } from './PriorityBadge';
+import { PipelineItem, PipelineSummary } from '../types';
 import { STAGE_META, detailPath, followUpInfo, formatDeal, formatMoney } from '../utils/pipeline';
 import './Pipeline.css';
 
 const LIMIT = 6;
-type Tab = 'hot' | 'favorites';
-
-interface TabData {
-  items: PipelineItem[];
-  total: number;
-}
 
 export const HotListWidget: React.FC = () => {
-  const [tab, setTab] = useState<Tab>('hot');
-  const [data, setData] = useState<Record<Tab, TabData>>({ hot: { items: [], total: 0 }, favorites: { items: [], total: 0 } });
+  const [items, setItems] = useState<PipelineItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      pipelineApi.list({ priority: [Priority.HOT], limit: LIMIT }),
-      pipelineApi.list({ favorites: true, limit: LIMIT }),
-      pipelineApi.summary(),
-    ])
-      .then(([hot, fav, sum]) => {
+    Promise.all([pipelineApi.list({ limit: LIMIT }), pipelineApi.summary()])
+      .then(([list, sum]) => {
         if (cancelled) return;
-        setData({ hot: { items: hot.items, total: hot.total }, favorites: { items: fav.items, total: fav.total } });
+        setItems(list.items);
+        setTotal(list.total);
         setSummary(sum);
       })
-      .catch((err) => console.error('Failed to load hot list:', err))
+      .catch((err) => console.error('Failed to load hot leads:', err))
       .finally(() => !cancelled && setLoaded(true));
     return () => {
       cancelled = true;
@@ -45,37 +35,21 @@ export const HotListWidget: React.FC = () => {
 
   if (!loaded) return null;
 
-  const { items, total } = data[tab];
-  const link = tab === 'hot' ? '/pipeline?priority=hot' : '/pipeline?fav=1';
-
   return (
     <div className="pl-widget">
       <div className="pl-widget-head">
-        <div className="pl-widget-tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'hot'} className={tab === 'hot' ? 'active' : ''} onClick={() => setTab('hot')}>
-            🔥 Hot list <em>{data.hot.total}</em>
-          </button>
-          <button type="button" role="tab" aria-selected={tab === 'favorites'} className={tab === 'favorites' ? 'active' : ''} onClick={() => setTab('favorites')}>
-            ★ Favorites <em>{data.favorites.total}</em>
-          </button>
-        </div>
+        <h2>🔥 Hot leads {total > 0 && <span className="pl-widget-count">{total}</span>}</h2>
         <div className="pl-widget-meta">
-          {summary && summary.mrr > 0 && <span className="pl-widget-mrr">Hot list {formatMoney(summary.mrr)} / mo</span>}
-          <Link to={total > 0 ? link : '/pipeline'} className="pl-widget-link">
-            {total > LIMIT ? `View all ${total} →` : 'Open hot list →'}
+          {summary && summary.mrr > 0 && <span className="pl-widget-mrr">{formatMoney(summary.mrr)} / mo</span>}
+          <Link to="/pipeline" className="pl-widget-link">
+            {total > LIMIT ? `View all ${total} →` : 'Open hot leads →'}
           </Link>
         </div>
       </div>
 
       {items.length === 0 ? (
         <p className="pl-widget-empty">
-          {tab === 'favorites' ? (
-            <>Star the companies and contacts you want to keep an eye on to see them here. <Link to="/pipeline">Open the hot list</Link></>
-          ) : summary && summary.total > 0 ? (
-            <>Nothing is hot right now. <Link to="/pipeline">Open the hot list</Link> to see {summary.total} other item{summary.total === 1 ? '' : 's'}.</>
-          ) : (
-            <>Rank the companies and contacts you are actively working on to see them here. <Link to="/pipeline">Start your hot list</Link></>
-          )}
+          No hot leads yet. Mark the companies and contacts you are actively working on with 🔥. <Link to="/pipeline">Open hot leads</Link>
         </p>
       ) : (
         items.map((item) => {
@@ -95,7 +69,6 @@ export const HotListWidget: React.FC = () => {
               </div>
               <span className="pl-widget-badges">
                 {stage && <span className="pl-stage" style={{ color: stage.color, background: stage.bg }}>{stage.label}</span>}{' '}
-                <PriorityBadge value={item.priority} size="sm" />{' '}
                 {fu.tone !== 'none' && <span className={`pl-followup pl-tone-${fu.tone}`} title={fu.title}>{fu.label}</span>}
               </span>
             </Link>

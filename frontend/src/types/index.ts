@@ -17,12 +17,6 @@ export enum RelationshipStatus {
   INACTIVE = 'inactive',
 }
 
-export enum Priority {
-  HOT = 'hot',
-  WARM = 'warm',
-  COLD = 'cold',
-}
-
 export enum DealStage {
   LEAD = 'lead',
   DEMO = 'demo',
@@ -38,7 +32,7 @@ export type DealPeriod = 'monthly' | 'yearly' | 'one_time';
 
 /** Pipeline / deal fields shared by contacts and companies. */
 export interface DealFields {
-  priority?: Priority | null;
+  is_hot?: boolean;
   next_action?: string | null;
   deal_value?: number | null; // EUR
   deal_value_period?: DealPeriod | null;
@@ -106,7 +100,7 @@ export interface Contact {
   last_contacted_at?: string;
   next_contact_due_at?: string;
   reminders_enabled: boolean;
-  priority?: Priority | null;
+  is_hot?: boolean;
   next_action?: string | null;
   deal_value?: number | null;
   deal_value_period?: DealPeriod | null;
@@ -130,7 +124,7 @@ export interface ContactCreate {
   last_contacted_at?: string | null;
   next_contact_due_at?: string | null;
   reminders_enabled?: boolean;
-  priority?: Priority | null;
+  is_hot?: boolean;
   next_action?: string | null;
   deal_value?: number | null;
   deal_value_period?: DealPeriod | null;
@@ -253,7 +247,7 @@ export interface Company {
   last_contacted_at?: string;
   next_contact_due_at?: string;
   reminders_enabled: boolean;
-  priority?: Priority | null;
+  is_hot?: boolean;
   next_action?: string | null;
   deal_value?: number | null;
   deal_value_period?: DealPeriod | null;
@@ -277,7 +271,7 @@ export interface CompanyCreate {
   current_relationship_status?: RelationshipStatus;
   reminders_enabled?: boolean;
   next_contact_due_at?: string | null;
-  priority?: Priority | null;
+  is_hot?: boolean;
   next_action?: string | null;
   deal_value?: number | null;
   deal_value_period?: DealPeriod | null;
@@ -294,7 +288,7 @@ export interface CompanyUpdate {
   current_relationship_status?: RelationshipStatus;
   reminders_enabled?: boolean;
   next_contact_due_at?: string | null;
-  priority?: Priority | null;
+  is_hot?: boolean;
   next_action?: string | null;
   deal_value?: number | null;
   deal_value_period?: DealPeriod | null;
@@ -337,13 +331,12 @@ export interface PipelineItem {
   company_name?: string | null;
   job_title?: string | null;
   industry?: string | null;
-  priority?: Priority | null;
+  is_hot: boolean;
   next_action?: string | null;
   deal_value?: number | null;
   deal_value_period?: DealPeriod | null;
   deal_stage?: DealStage | null;
   waiting_on?: WaitingOn | null;
-  is_favorite: boolean;
   status: RelationshipStatus;
   last_contacted_at?: string | null;
   next_contact_due_at?: string | null;
@@ -362,17 +355,10 @@ export interface PipelineListResponse {
 
 export interface PipelineSummary {
   total: number;
-  hot: number;
-  warm: number;
-  cold: number;
   overdue: number;
   companies: number;
   contacts: number;
-  favorites: number;
   mrr: number;
-  hot_mrr: number;
-  warm_mrr: number;
-  cold_mrr: number;
   one_time: number;
 }
 
@@ -385,13 +371,11 @@ export interface PipelineQuery {
   limit?: number;
   search?: string;
   entity_type?: EntityType;
-  priority?: Priority[];
   status?: string;
   owner_id?: number;
   due?: 'overdue' | 'week' | 'none';
   stage?: DealStage;
   waiting_on?: WaitingOn;
-  favorites?: boolean;
   sort_by?: string;
   sort_order?: 'asc' | 'desc';
 }

@@ -7,7 +7,7 @@ from sqlalchemy import String, Text, Integer, Float, ForeignKey, DateTime, Boole
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
-from app.models.contact import RelationshipStatus, Priority, DealStage, WaitingOn, DealPeriod
+from app.models.contact import RelationshipStatus, DealStage, WaitingOn, DealPeriod
 
 
 class Company(Base):
@@ -32,9 +32,7 @@ class Company(Base):
     reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     # Pipeline ("hot list") fields
-    priority: Mapped[Optional[Priority]] = mapped_column(
-        SQLEnum(Priority, native_enum=False, length=10), nullable=True, index=True
-    )
+    is_hot: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     next_action: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     deal_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     deal_value_period: Mapped[Optional[DealPeriod]] = mapped_column(

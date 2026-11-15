@@ -32,13 +32,6 @@ class RelationshipStatus(str, enum.Enum):
     INACTIVE = "inactive"
 
 
-class Priority(str, enum.Enum):
-    """Deal heat. NULL priority on a contact/company means "not in the pipeline"."""
-    HOT = "hot"
-    WARM = "warm"
-    COLD = "cold"
-
-
 class DealStage(str, enum.Enum):
     """Where a deal is in the sales process (order matters: used for sorting)"""
     LEAD = "lead"
@@ -86,10 +79,8 @@ class Contact(Base):
     next_contact_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    # Pipeline ("hot list") fields
-    priority: Mapped[Optional[Priority]] = mapped_column(
-        SQLEnum(Priority, native_enum=False, length=10), nullable=True, index=True
-    )
+    # Hot lead fields
+    is_hot: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     next_action: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     deal_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     deal_value_period: Mapped[Optional[DealPeriod]] = mapped_column(

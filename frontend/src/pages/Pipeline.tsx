@@ -18,21 +18,17 @@ import {
   PipelineQuery,
   PipelineSummary,
   PipelineUpdate,
-  Priority,
   RelationshipStatus,
   User,
   WaitingOn,
 } from '../types';
-import { PriorityPicker } from '../components/PriorityBadge';
+import { HotToggle } from '../components/HotToggle';
 import { Pagination } from '../components/Pagination';
-import { FavoriteStar } from '../components/FavoriteStar';
 import { EmptyState, SearchBox, TableSkeleton } from '../components/ui';
 import { DealCell, FollowUpCell, NextActionCell, ValueCell } from '../components/PipelineCells';
 import { AddToPipelineModal, ContactedModal } from '../components/PipelineDialogs';
 import { useScrollRestoration } from '../utils/useScrollRestoration';
 import {
-  PRIORITY_META,
-  PRIORITY_ORDER,
   STAGE_META,
   STAGE_ORDER,
   STATUS_LABELS,
@@ -49,12 +45,12 @@ const DEFAULT_PAGE_SIZE = 25;
 const DUE_OPTIONS = ['overdue', 'week', 'none'] as const;
 type Due = (typeof DUE_OPTIONS)[number];
 
-const SORT_KEYS = ['priority', 'name', 'stage', 'due', 'value', 'last_contacted', 'owner', 'status'];
+const SORT_KEYS = ['name', 'stage', 'due', 'value', 'last_contacted', 'owner', 'status'];
 
 const itemKey = (i: Pick<PipelineItem, 'entity_type' | 'id'>) => `${i.entity_type}-${i.id}`;
 
 export const PipelinePage: React.FC = () => {
-  usePageTitle('Hot list');
+  usePageTitle('Hot leads');
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
 
@@ -62,10 +58,6 @@ export const PipelinePage: React.FC = () => {
   const q = params.get('q') ?? '';
   const typeParam = params.get('type');
   const type: EntityType | undefined = typeParam === 'company' || typeParam === 'contact' ? typeParam : undefined;
-  const priorityParam = params.get('priority');
-  const priority = (Object.values(Priority) as string[]).includes(priorityParam ?? '')
-    ? (priorityParam as Priority)
-    : undefined;
   const statusParam = params.get('status') ?? '';
   const status = (Object.values(RelationshipStatus) as string[]).includes(statusParam) ? statusParam : '';
   const ownerParam = Number(params.get('owner'));
@@ -76,7 +68,6 @@ export const PipelinePage: React.FC = () => {
   const stage = (Object.values(DealStage) as string[]).includes(stageParam) ? (stageParam as DealStage) : undefined;
   const waitingParam = params.get('waiting');
   const waiting: WaitingOn | undefined = waitingParam === 'client' || waitingParam === 'us' ? waitingParam : undefined;
-  const favorites = params.get('fav') === '1';
   const sort = SORT_KEYS.includes(params.get('sort') ?? '') ? (params.get('sort') as string) : '';
   const order: 'asc' | 'desc' = params.get('order') === 'desc' ? 'desc' : 'asc';
   const sizeParam = Number(params.get('size'));
@@ -116,19 +107,17 @@ export const PipelinePage: React.FC = () => {
     () => ({
       search: q || undefined,
       entity_type: type,
-      priority: priority ? [priority] : undefined,
       status: status || undefined,
       owner_id: owner,
       due,
       stage,
       waiting_on: waiting,
-      favorites: favorites || undefined,
       sort_by: sort || undefined,
       sort_order: order,
       skip: (page - 1) * pageSize,
       limit: pageSize,
     }),
-    [q, type, priority, status, owner, due, stage, waiting, favorites, sort, order, page, pageSize]
+    [q, type, status, owner, due, stage, waiting, sort, order, page, pageSize]
   );
 
   const load = useCallback(
@@ -147,7 +136,7 @@ export const PipelinePage: React.FC = () => {
           setParam({ page: String(Math.ceil(list.total / pageSize)) }, true);
         }
       } catch (err: any) {
-        if (id === reqRef.current) setError(err.message || 'Failed to load hot list');
+        if (id === reqRef.current) setError(err.message || 'Failed to load hot leads');
       } finally {
         if (id === reqRef.current) {
           setLoading(false);
@@ -204,7 +193,7 @@ export const PipelinePage: React.FC = () => {
       const k = itemKey(item);
       const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
       const optimistic: PipelineItem = { ...item, ...defined };
-      const removed = patch.priority === null && !favorites; // leaves the list unless viewing favourites
+      const removed = patch.is_hot === false; // an item that is no longer hot leaves the list
       setItems((prev) => (removed ? prev.filter((i) => itemKey(i) !== k) : prev.map((i) => (itemKey(i) === k ? optimistic : i))));
       if (removed) setTotal((t) => Math.max(0, t - 1));
 
@@ -223,12 +212,11 @@ export const PipelinePage: React.FC = () => {
         showToast(err.message || 'Could not save the change', 'error');
       }
     },
-    [favorites, load, showToast]
+    [load, showToast]
   );
 
-  const changePriority = (item: PipelineItem, next: Priority | null) => {
-    const label = next ? `${item.name} is now ${PRIORITY_META[next].label.toLowerCase()}` : `${item.name} removed from the hot list`;
-    applyUpdate(item, { priority: next }, label, { priority: item.priority ?? null });
+  const changeHot = (item: PipelineItem, hot: boolean) => {
+    applyUpdate(item, { is_hot: hot }, hot ? `${item.name} marked as hot lead` : `${item.name} removed from hot leads`, { is_hot: !hot });
   };
 
   /** Patch several deal fields at once; undo restores their previous values. */
@@ -243,44 +231,25 @@ export const PipelinePage: React.FC = () => {
     applyUpdate(item, patch, message, undo);
   };
 
-  const toggleFavorite = useCallback(
-    async (item: PipelineItem, next: boolean) => {
-      const k = itemKey(item);
-      const leavesList = favorites && !next;
-      setItems((prev) => (leavesList ? prev.filter((i) => itemKey(i) !== k) : prev.map((i) => (itemKey(i) === k ? { ...i, is_favorite: next } : i))));
-      if (leavesList) setTotal((t) => Math.max(0, t - 1));
-      try {
-        await pipelineApi.setFavorite(item.entity_type, item.id, next);
-        if (leavesList) showToast(`${item.name} removed from favorites`, 'success', { label: 'Undo', run: () => toggleFavorite({ ...item, is_favorite: false }, true) });
-        load(true);
-      } catch (err: any) {
-        setItems((prev) => (leavesList ? [item, ...prev] : prev.map((i) => (itemKey(i) === k ? item : i))));
-        if (leavesList) setTotal((t) => t + 1);
-        showToast(err.message || 'Could not update favorites', 'error');
-      }
-    },
-    [favorites, load, showToast]
-  );
-
   // ── dialogs ──────────────────────────────────────────────────────────
   const [contactedItem, setContactedItem] = useState<PipelineItem | null>(null);
   const [adding, setAdding] = useState(false);
 
   // ── filter helpers ───────────────────────────────────────────────────
-  const hasFilters = Boolean(q || type || priority || status || owner || due || stage || waiting || favorites);
+  const hasFilters = Boolean(q || type || status || owner || due || stage || waiting);
   const clearFilters = () => {
     setSearchText('');
     setParams(new URLSearchParams(Object.fromEntries([...params].filter(([k]) => ['sort', 'order', 'size'].includes(k)))));
   };
 
   const toggleSort = (key: string) => {
-    const current = sort || 'priority';
+    const current = sort || 'due';
     if (current === key) setParam({ sort: key, order: order === 'asc' ? 'desc' : 'asc' });
     else setParam({ sort: key, order: key === 'value' ? 'desc' : 'asc' });
   };
-  const sortIndicator = (key: string) => ((sort || 'priority') === key ? (order === 'asc' ? ' ▲' : ' ▼') : '');
+  const sortIndicator = (key: string) => ((sort || 'due') === key ? (order === 'asc' ? ' ▲' : ' ▼') : '');
   const ariaSort = (key: string): 'ascending' | 'descending' | 'none' =>
-    (sort || 'priority') === key ? (order === 'asc' ? 'ascending' : 'descending') : 'none';
+    (sort || 'due') === key ? (order === 'asc' ? 'ascending' : 'descending') : 'none';
   const Th: React.FC<{ k: string; children: React.ReactNode; className?: string }> = ({ k, children, className }) => (
     <th aria-sort={ariaSort(k)} className={`pl-sortable ${className ?? ''}`} onClick={() => toggleSort(k)}>
       {children}{sortIndicator(k)}
@@ -296,39 +265,24 @@ export const PipelinePage: React.FC = () => {
       <div className="page">
         <div className="page-header">
           <div>
-            <h1 className="page-title">Hot list</h1>
-            <p className="page-sub">The companies and contacts you are actively working, hottest first.</p>
+            <h1 className="page-title">Hot leads</h1>
+            <p className="page-sub">The companies and contacts you are actively working on, most urgent follow-up first.</p>
           </div>
           <button type="button" className="btn btn-primary btn-lg" onClick={() => setAdding(true)}>
-            + Add to hot list
+            + Add hot lead
           </button>
         </div>
 
-        {/* Summary tiles double as filters */}
-        <div className="pl-tiles">
-          {PRIORITY_ORDER.map((p) => {
-            const m = PRIORITY_META[p];
-            const count = summary ? summary[p] : null;
-            const value = summary ? summary[`${p}_mrr` as 'hot_mrr' | 'warm_mrr' | 'cold_mrr'] : 0;
-            const active = priority === p;
-            return (
-              <button
-                key={p}
-                type="button"
-                className={`pl-tile${active ? ' active' : ''}`}
-                style={{ ['--tile-color' as string]: m.color, ['--tile-bg' as string]: m.bg, ['--tile-border' as string]: m.border } as React.CSSProperties}
-                aria-pressed={active}
-                onClick={() => setParam({ priority: active ? null : p })}
-              >
-                <span className="pl-tile-emoji" aria-hidden="true">{m.emoji}</span>
-                <span className="pl-tile-count">{count ?? '–'}</span>
-                <span className="pl-tile-text">
-                  <span className="pl-tile-label">{m.label}</span>
-                  {value > 0 && <span className="pl-tile-value">{formatMoney(value)} / mo</span>}
-                </span>
-              </button>
-            );
-          })}
+        {/* Summary */}
+        <div className="pl-tiles pl-tiles-2">
+          <div className="pl-tile pl-tile-static" style={{ ['--tile-color' as string]: '#b42318' } as React.CSSProperties}>
+            <span className="pl-tile-emoji" aria-hidden="true">🔥</span>
+            <span className="pl-tile-count">{summary?.total ?? '–'}</span>
+            <span className="pl-tile-text">
+              <span className="pl-tile-label">Hot leads</span>
+              {summary && summary.mrr > 0 && <span className="pl-tile-value">{formatMoney(summary.mrr)} / mo</span>}
+            </span>
+          </div>
           <button
             type="button"
             className={`pl-tile pl-tile-overdue${due === 'overdue' ? ' active' : ''}`}
@@ -337,13 +291,13 @@ export const PipelinePage: React.FC = () => {
           >
             <span className="pl-tile-emoji" aria-hidden="true">⏰</span>
             <span className="pl-tile-count">{summary?.overdue ?? '–'}</span>
-            <span className="pl-tile-text"><span className="pl-tile-label">Overdue</span></span>
+            <span className="pl-tile-text"><span className="pl-tile-label">Overdue follow-ups</span></span>
           </button>
         </div>
 
         {summary && (summary.mrr > 0 || summary.one_time > 0) && (
           <div className="pl-valuebar">
-            <span>Hot list value</span>
+            <span>Total value</span>
             <strong>{formatMoney(summary.mrr)} / mo</strong>
             <span className="pl-valuebar-yr">≈ {formatMoney(summary.mrr * 12)} / yr</span>
             {summary.one_time > 0 && <span className="pl-valuebar-one">+ {formatMoney(summary.one_time)} one-time</span>}
@@ -357,7 +311,7 @@ export const PipelinePage: React.FC = () => {
             value={searchText}
             onChange={setSearchText}
             placeholder="Search name, company, owner, notes…   ( / )"
-            label="Search hot list"
+            label="Search hot leads"
           />
 
           <div className="segment" role="group" aria-label="Type">
@@ -371,16 +325,6 @@ export const PipelinePage: React.FC = () => {
               Contacts {summary ? <em>{summary.contacts}</em> : null}
             </button>
           </div>
-
-          <button
-            type="button"
-            className={`chip chip-fav${favorites ? ' active' : ''}`}
-            aria-pressed={favorites}
-            onClick={() => setParam({ fav: favorites ? null : '1' })}
-            title="Show only your starred items"
-          >
-            ★ Favorites{summary ? <em>{summary.favorites}</em> : null}
-          </button>
 
           <button
             type="button"
@@ -441,19 +385,19 @@ export const PipelinePage: React.FC = () => {
         ) : pipelineEmpty ? (
           <EmptyState
             icon="🔥"
-            title="Your hot list is empty"
-            action={<button type="button" className="btn btn-primary btn-lg" onClick={() => setAdding(true)}>+ Add your first one</button>}
+            title="No hot leads yet"
+            action={<button type="button" className="btn btn-primary btn-lg" onClick={() => setAdding(true)}>+ Add your first hot lead</button>}
           >
-            Add the companies and contacts you are actively working on and rank them Hot, Warm or Cold. You will see what needs
-            attention at a glance.
+            Mark the companies and contacts you are actively working on with 🔥 and they will show up here with their next
+            action and follow-up.
           </EmptyState>
         ) : items.length === 0 ? (
           <EmptyState
             compact
-            title={favorites && !hasFilters ? 'No favorites yet' : 'No matches'}
+            title="No matches"
             action={hasFilters ? <button type="button" className="btn" onClick={clearFilters}>Clear filters</button> : undefined}
           >
-            {favorites ? 'Star the items you want to keep an eye on.' : 'Nothing in the hot list fits the current filters.'}
+            Nothing in the hot leads fits the current filters.
           </EmptyState>
         ) : (
           <>
@@ -462,8 +406,7 @@ export const PipelinePage: React.FC = () => {
                 <table className="pl-table">
                   <thead>
                     <tr>
-                      <th className="pl-col-star" aria-label="Favorite" />
-                      <Th k="priority">Priority</Th>
+                      <th className="pl-col-hot" aria-label="Hot lead" />
                       <Th k="name">Name</Th>
                       <Th k="stage">Deal</Th>
                       <th>Next action</th>
@@ -478,13 +421,9 @@ export const PipelinePage: React.FC = () => {
                     {items.map((item) => {
                       const last = lastContactInfo(item.last_contacted_at);
                       return (
-                        <tr key={itemKey(item)} className={`pl-row${item.priority ? ` pl-row-${item.priority}` : ' pl-row-none'}`}>
-                          <td className="pl-col-star">
-                            <FavoriteStar value={item.is_favorite} onToggle={(v) => toggleFavorite(item, v)} size="sm" />
-                          </td>
-
-                          <td className="pl-col-priority">
-                            <PriorityPicker value={item.priority} onChange={(p) => changePriority(item, p)} />
+                        <tr key={itemKey(item)} className="pl-row pl-row-hot">
+                          <td className="pl-col-hot">
+                            <HotToggle value={item.is_hot} onChange={(v) => changeHot(item, v)} />
                           </td>
 
                           <td className="pl-col-name">
@@ -607,7 +546,7 @@ export const PipelinePage: React.FC = () => {
         <AddToPipelineModal
           onClose={() => setAdding(false)}
           onChanged={() => {
-            showToast('Hot list updated');
+            showToast('Hot leads updated');
             load(true);
           }}
         />

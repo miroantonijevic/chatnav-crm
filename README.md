@@ -164,25 +164,20 @@ Apply migrations:
 alembic upgrade head
 ```
 
-## Pipeline ("Hot list")
+## Hot leads
 
-The **Pipeline** page (`/pipeline`) is a single list of the companies *and* contacts that are being actively
-worked. An item is "in the pipeline" when it has a **priority** (`hot`, `warm` or `cold`); clearing the priority
-removes it. Each item can also carry a free-text **next action**, and uses the existing follow-up date and reminders.
+The **Hot leads** page (`/pipeline`) is one list of the companies *and* contacts you are actively working on. An item
+is on the list when it is marked as a **hot lead** (🔥), a simple on/off flag shared by the whole team. Toggle it from
+the list, from the item's page, from its edit form, or with **+ Add hot lead**.
 
-- Search, type / owner / status / follow-up filters, sorting and pagination are all done server-side over a
-  `UNION` of both tables (`GET /api/v1/pipeline`), so paging never hides rows from a filter or search.
-- Priority, next action and follow-up date can be edited inline (`PATCH /api/v1/pipeline/{company|contact}/{id}`);
-  each change is written to the item's history.
-- `GET /api/v1/pipeline/summary` powers the Hot / Warm / Cold / Overdue tiles.
-- The dashboard shows a Hot list / Favorites widget; priority and deal fields can also be set on the contact /
-  company edit forms.
-- **Deals**: each item can have a deal **stage** (lead, demo, trial, proposal, negotiation, won, lost), a
-  **waiting on** flag (client / us), and a **value** in EUR with a billing period (monthly, yearly, one-time). The
-  page header shows the recurring pipeline value as monthly-equivalent (yearly deals are divided by 12).
-- **Favorites** are personal stars (`PUT/DELETE /api/v1/pipeline/{type}/{id}/favorite`); the Favorites filter
-  shows your starred items even if they have no priority.
-- Reminder emails include the priority, next action, stage and deal value, and hot items get a `[HOT]` subject prefix.
+- Each item can carry a **next action** (free text), a **follow-up** date (reminders use it), a deal **stage**
+  (lead, demo, trial, proposal, negotiation, won, lost), a **waiting on** flag (client / us) and a **value** in EUR
+  with a billing period (monthly, yearly, one-time). The header shows the recurring value as monthly-equivalent.
+- Search, type / owner / stage / waiting-on / status / follow-up filters, sorting and pagination are all done
+  server-side over a `UNION` of both tables (`GET /api/v1/pipeline`), so paging never hides rows from a filter.
+- Inline edits use `PATCH /api/v1/pipeline/{company|contact}/{id}` and are written to the item's history.
+- The dashboard shows a Hot leads widget. Reminder emails include the next action, stage and deal value, and hot
+  leads get a `[HOT]` subject prefix.
 
 ### Dates and numbers
 

@@ -144,13 +144,11 @@ const pipelineParams = (params: PipelineQuery = {}, only?: (keyof PipelineQuery)
   if (use('limit') && params.limit) q.append('limit', String(params.limit));
   if (use('search') && params.search) q.append('search', params.search);
   if (use('entity_type') && params.entity_type) q.append('entity_type', params.entity_type);
-  if (use('priority')) params.priority?.forEach((p) => q.append('priority', p));
   if (use('status') && params.status) q.append('status', params.status);
   if (use('owner_id') && params.owner_id) q.append('owner_id', String(params.owner_id));
   if (use('due') && params.due) q.append('due', params.due);
   if (use('stage') && params.stage) q.append('stage', params.stage);
   if (use('waiting_on') && params.waiting_on) q.append('waiting_on', params.waiting_on);
-  if (use('favorites') && params.favorites) q.append('favorites', 'true');
   if (use('sort_by') && params.sort_by) q.append('sort_by', params.sort_by);
   if (use('sort_order') && params.sort_order) q.append('sort_order', params.sort_order);
   const s = q.toString();
@@ -160,7 +158,7 @@ const pipelineParams = (params: PipelineQuery = {}, only?: (keyof PipelineQuery)
 export const pipelineApi = {
   list: (params?: PipelineQuery) =>
     apiClient.get<PipelineListResponse>(`/pipeline${pipelineParams(params)}`),
-  // The server ignores the priority/due filters for the summary; only send the relevant ones
+  // The server ignores the follow-up filter for the summary; only send the relevant ones
   summary: (params?: PipelineQuery) =>
     apiClient.get<PipelineSummary>(
       `/pipeline/summary${pipelineParams(params, ['search', 'entity_type', 'status', 'owner_id', 'stage', 'waiting_on'])}`
@@ -168,8 +166,4 @@ export const pipelineApi = {
   get: (type: EntityType, id: number) => apiClient.get<PipelineItem>(`/pipeline/${type}/${id}`),
   update: (type: EntityType, id: number, data: PipelineUpdate) =>
     apiClient.patch<PipelineItem>(`/pipeline/${type}/${id}`, data),
-  setFavorite: (type: EntityType, id: number, favorite: boolean) =>
-    favorite
-      ? apiClient.put<PipelineItem>(`/pipeline/${type}/${id}/favorite`, {})
-      : apiClient.delete<PipelineItem>(`/pipeline/${type}/${id}/favorite`),
 };

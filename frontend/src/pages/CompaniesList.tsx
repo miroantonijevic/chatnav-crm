@@ -13,7 +13,7 @@ import { usePageTitle } from '../hooks/usePageTitle';
 import { useScrollRestoration } from '../utils/useScrollRestoration';
 import { fromServer, fmtDate } from '../utils/dates';
 import { STATUS_LABELS, detailPath } from '../utils/pipeline';
-import { PriorityBadge } from '../components/PriorityBadge';
+import { HotBadge } from '../components/HotToggle';
 import { Pagination } from '../components/Pagination';
 import { ContactLinks, FollowUpBadge } from '../components/EntityBits';
 import { Alert, EmptyState, Person, RowMenu, SearchBox, StatusBadge, TableSkeleton } from '../components/ui';
@@ -178,7 +178,7 @@ export const CompaniesListPage: React.FC = () => {
                         <td>
                           <div className="name-cell">
                             <Link to={detailPath('company', c.id)} className="row-link">{c.name}</Link>
-                            {c.priority && <PriorityBadge value={c.priority} size="sm" />}
+                            {c.is_hot && <HotBadge size="sm" />}
                           </div>
                           {c.industry && <div className="cell-sub">{c.industry}</div>}
                         </td>

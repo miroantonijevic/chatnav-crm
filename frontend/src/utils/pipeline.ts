@@ -1,16 +1,8 @@
 /**
- * Shared helpers for the pipeline ("hot list") feature.
+ * Shared helpers for the hot leads feature.
  */
-import { DealPeriod, DealStage, Priority, RelationshipStatus, WaitingOn } from '../types';
+import { DealPeriod, DealStage, RelationshipStatus, WaitingOn } from '../types';
 import { fromServer, fmtDate, fmtDateTime } from './dates';
-
-export const PRIORITY_ORDER: Priority[] = [Priority.HOT, Priority.WARM, Priority.COLD];
-
-export const PRIORITY_META: Record<Priority, { label: string; emoji: string; color: string; bg: string; border: string }> = {
-  [Priority.HOT]: { label: 'Hot', emoji: '🔥', color: '#b42318', bg: '#fee4e2', border: '#fda29b' },
-  [Priority.WARM]: { label: 'Warm', emoji: '🌤️', color: '#b54708', bg: '#fef0c7', border: '#fec84b' },
-  [Priority.COLD]: { label: 'Cold', emoji: '❄️', color: '#175cd3', bg: '#d1e9ff', border: '#84caff' },
-};
 
 export const STATUS_LABELS: Record<string, string> = {
   [RelationshipStatus.NEW]: 'New',

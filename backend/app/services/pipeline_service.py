@@ -1,23 +1,21 @@
 """
-Pipeline ("hot list") service.
+Hot leads service.
 
-Presents companies and contacts that have a priority set (or that the current user
-has starred) as one list. Filtering, searching, sorting and pagination all happen
-in SQL over a UNION of both tables, so pagination never hides rows from
-filters/search and `total` is always exact.
+Presents the companies and contacts marked as hot leads as one list. Filtering,
+searching, sorting and pagination all happen in SQL over a UNION of both tables,
+so pagination never hides rows from filters/search and `total` is always exact.
 """
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Tuple
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import String, and_, asc, case, desc, exists, func, literal_column, or_, select, union_all
+from sqlalchemy import String, and_, asc, case, desc, func, literal_column, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, joinedload
 
 from app.models.company import Company
-from app.models.contact import Contact, DealPeriod, DealStage, Priority, RelationshipStatus, WaitingOn
-from app.models.favorite import UserFavorite
+from app.models.contact import Contact, DealPeriod, DealStage, RelationshipStatus, WaitingOn
 from app.models.user import User
 from app.schemas.pipeline import PipelineItem, PipelineSummary, PipelineUpdate
 from app.services.company_history_service import CompanyHistoryService
@@ -31,27 +29,14 @@ from app.utils.deal import apply_deal_defaults, format_deal_value
 class PipelineFilters:
     search: Optional[str] = None
     entity_type: Optional[str] = None  # "company" | "contact" | None (both)
-    priorities: List[Priority] = field(default_factory=list)
     status: Optional[RelationshipStatus] = None
     owner_id: Optional[int] = None
     due: Optional[str] = None  # "overdue" | "week" | "none"
     stage: Optional[DealStage] = None
     waiting_on: Optional[WaitingOn] = None
-    favorites_only: bool = False
-    user_id: Optional[int] = None  # current user, for favourites
 
 
 # ---------- SQL expression helpers ----------
-
-def _rank(col):
-    """Sort rank for priority: hot < warm < cold < (none)"""
-    return case(
-        (col == Priority.HOT, 0),
-        (col == Priority.WARM, 1),
-        (col == Priority.COLD, 2),
-        else_=3,
-    )
-
 
 def _stage_rank(col):
     return case(*[(col == s, i) for i, s in enumerate(DealStage)], else_=99)
@@ -91,28 +76,8 @@ class PipelineService:
     # ---------- query building ----------
 
     @staticmethod
-    def _common_conditions(model, kind: str, f: PipelineFilters, use_priority: bool, use_due: bool, scope: str) -> list:
-        """
-        scope: "pipeline" = items with a priority, "favorites" = items the user starred,
-               "auto" = favourites when the favourites filter is on, otherwise pipeline.
-        """
-        favorites_scope = scope == "favorites" or (scope == "auto" and f.favorites_only)
-        conditions = []
-
-        if favorites_scope:
-            conditions.append(
-                exists().where(
-                    UserFavorite.user_id == (f.user_id or -1),
-                    UserFavorite.entity_type == kind,
-                    UserFavorite.entity_id == model.id,
-                )
-            )
-        if use_priority and f.priorities:
-            conditions.append(model.priority.in_(f.priorities))
-        elif not favorites_scope:
-            # Pipeline scope: only items that have been given a priority
-            conditions.append(model.priority.isnot(None))
-
+    def _common_conditions(model, f: PipelineFilters, use_due: bool) -> list:
+        conditions = [model.is_hot == True]  # noqa: E712 - only hot leads are on the list
         if f.status:
             conditions.append(model.current_relationship_status == f.status)
         if f.owner_id:
@@ -131,8 +96,6 @@ class PipelineService:
             literal_column(f"'{kind}'", String).label("entity_type"),
             model.id.label("id"),
             func.lower(name_expr).label("name_key"),
-            model.priority.label("priority"),
-            _rank(model.priority).label("rank"),
             model.current_relationship_status.label("status"),
             model.last_contacted_at.label("last_contacted_at"),
             model.next_contact_due_at.label("due"),
@@ -146,12 +109,9 @@ class PipelineService:
         ]
 
     @classmethod
-    def _company_select(cls, f, use_priority, use_due, scope):
+    def _company_select(cls, f, use_due):
         owner = aliased(User)
-        conditions = [
-            *CompanyService._filter_conditions(search=f.search),
-            *cls._common_conditions(Company, "company", f, use_priority, use_due, scope),
-        ]
+        conditions = [*CompanyService._filter_conditions(search=f.search), *cls._common_conditions(Company, f, use_due)]
         return (
             select(*cls._columns("company", Company, Company.name, owner))
             .select_from(Company)
@@ -160,12 +120,9 @@ class PipelineService:
         )
 
     @classmethod
-    def _contact_select(cls, f, use_priority, use_due, scope):
+    def _contact_select(cls, f, use_due):
         owner = aliased(User)
-        conditions = [
-            *ContactService._filter_conditions(search=f.search),
-            *cls._common_conditions(Contact, "contact", f, use_priority, use_due, scope),
-        ]
+        conditions = [*ContactService._filter_conditions(search=f.search), *cls._common_conditions(Contact, f, use_due)]
         return (
             select(*cls._columns("contact", Contact, Contact.first_name + " " + Contact.last_name, owner))
             .select_from(Contact)
@@ -174,12 +131,12 @@ class PipelineService:
         )
 
     @classmethod
-    def _union(cls, f: PipelineFilters, use_priority: bool = True, use_due: bool = True, scope: str = "auto"):
+    def _union(cls, f: PipelineFilters, use_due: bool = True):
         selects = []
         if f.entity_type in (None, "company"):
-            selects.append(cls._company_select(f, use_priority, use_due, scope))
+            selects.append(cls._company_select(f, use_due))
         if f.entity_type in (None, "contact"):
-            selects.append(cls._contact_select(f, use_priority, use_due, scope))
+            selects.append(cls._contact_select(f, use_due))
         return (selects[0] if len(selects) == 1 else union_all(*selects)).subquery()
 
     @staticmethod
@@ -189,24 +146,22 @@ class PipelineService:
         # Stable tiebreakers keep pagination deterministic
         tie = [asc(c.entity_type), asc(c.id)]
 
-        if sort_by == "due":
-            return [asc(_nulls_last(c.due)), direction(c.due), asc(c.rank), *tie]
-        if sort_by == "last_contacted":
-            return [asc(_nulls_last(c.last_contacted_at)), direction(c.last_contacted_at), asc(c.rank), *tie]
         if sort_by == "name":
             return [direction(c.name_key), *tie]
         if sort_by == "status":
-            return [direction(c.status), asc(c.rank), *tie]
+            return [direction(c.status), asc(c.due), *tie]
         if sort_by == "owner":
-            return [direction(c.owner_key), asc(c.rank), *tie]
+            return [direction(c.owner_key), asc(c.due), *tie]
+        if sort_by == "last_contacted":
+            return [asc(_nulls_last(c.last_contacted_at)), direction(c.last_contacted_at), *tie]
         if sort_by == "updated":
             return [direction(c.updated_at), *tie]
         if sort_by == "value":
-            return [asc(_nulls_last(c.deal_value)), direction(c.mrr), asc(c.rank), *tie]
+            return [asc(_nulls_last(c.deal_value)), direction(c.mrr), *tie]
         if sort_by == "stage":
-            return [asc(_nulls_last(c.deal_stage)), direction(c.stage_rank), asc(c.rank), *tie]
-        # default / "priority": hottest first, then most urgent follow-up
-        return [direction(c.rank), asc(_nulls_last(c.due)), asc(c.due), asc(c.name_key), *tie]
+            return [asc(_nulls_last(c.deal_stage)), direction(c.stage_rank), *tie]
+        # default / "due": most urgent follow-up first, items without one last
+        return [asc(_nulls_last(c.due)), direction(c.due), asc(c.name_key), *tie]
 
     # ---------- reads ----------
 
@@ -238,32 +193,13 @@ class PipelineService:
 
         companies = {c.id: c for c in await cls._load_companies(db, company_ids)} if company_ids else {}
         contacts = {c.id: c for c in await cls._load_contacts(db, contact_ids)} if contact_ids else {}
-        favorites = await cls._favorite_set(db, f.user_id, company_ids, contact_ids)
 
         items: List[PipelineItem] = []
         for r in rows:
             entity = (companies if r.entity_type == "company" else contacts).get(r.id)
             if entity is not None:
-                items.append(cls.to_item(r.entity_type, entity, (r.entity_type, r.id) in favorites))
+                items.append(cls.to_item(r.entity_type, entity))
         return items, total
-
-    @staticmethod
-    async def _favorite_set(
-        db: AsyncSession, user_id: Optional[int], company_ids: List[int], contact_ids: List[int]
-    ) -> Set[Tuple[str, int]]:
-        if not user_id or not (company_ids or contact_ids):
-            return set()
-        clauses = []
-        if company_ids:
-            clauses.append(and_(UserFavorite.entity_type == "company", UserFavorite.entity_id.in_(company_ids)))
-        if contact_ids:
-            clauses.append(and_(UserFavorite.entity_type == "contact", UserFavorite.entity_id.in_(contact_ids)))
-        result = await db.execute(
-            select(UserFavorite.entity_type, UserFavorite.entity_id).where(
-                UserFavorite.user_id == user_id, or_(*clauses)
-            )
-        )
-        return {(t, i) for t, i in result.all()}
 
     @staticmethod
     async def _load_companies(db: AsyncSession, ids: List[int]) -> List[Company]:
@@ -290,18 +226,16 @@ class PipelineService:
     @classmethod
     async def get_summary(cls, db: AsyncSession, f: PipelineFilters) -> PipelineSummary:
         """
-        Counts and values for the filter tiles. Respects search/type/owner/status/stage but
-        ignores the priority, due and favourites filters, so the tiles stay meaningful
-        while one of those is selected.
+        Counts and values for the header. Respects search/type/owner/status/stage but
+        ignores the follow-up filter, so the overdue number stays meaningful.
         """
-        sub = cls._union(f, use_priority=False, use_due=False, scope="pipeline")
+        sub = cls._union(f, use_due=False)
 
-        by_priority = (
+        total, mrr, one_time = (
             await db.execute(
-                select(sub.c.priority, func.count(), func.coalesce(func.sum(sub.c.mrr), 0.0)).group_by(sub.c.priority)
+                select(func.count(), func.coalesce(func.sum(sub.c.mrr), 0.0), func.coalesce(func.sum(sub.c.one_time_amt), 0.0))
             )
-        ).all()
-        one_time = (await db.execute(select(func.coalesce(func.sum(sub.c.one_time_amt), 0.0)))).scalar_one()
+        ).one()
         overdue = (
             await db.execute(
                 select(func.count()).select_from(sub).where(sub.c.due.isnot(None), sub.c.due <= datetime.utcnow())
@@ -309,32 +243,20 @@ class PipelineService:
         ).scalar_one()
 
         # Type counts ignore the entity_type filter so the type switcher can show both numbers
-        type_sub = cls._union(replace(f, entity_type=None), use_priority=False, use_due=False, scope="pipeline")
+        type_sub = cls._union(replace(f, entity_type=None), use_due=False)
         by_type = (
             await db.execute(select(type_sub.c.entity_type, func.count()).group_by(type_sub.c.entity_type))
         ).all()
 
-        favorites = 0
-        if f.user_id:
-            fav_sub = cls._union(f, use_priority=False, use_due=False, scope="favorites")
-            favorites = (await db.execute(select(func.count()).select_from(fav_sub))).scalar_one()
-
-        summary = PipelineSummary(overdue=overdue, favorites=favorites, one_time=float(one_time or 0))
-        for p, n, mrr in by_priority:
-            key = (p.name if isinstance(p, Priority) else str(p)).lower()
-            if key in ("hot", "warm", "cold"):
-                setattr(summary, key, n)
-                setattr(summary, f"{key}_mrr", float(mrr or 0))
+        summary = PipelineSummary(total=total, overdue=overdue, mrr=float(mrr or 0), one_time=float(one_time or 0))
         for t, n in by_type:
             setattr(summary, "companies" if t == "company" else "contacts", n)
-        summary.total = summary.hot + summary.warm + summary.cold
-        summary.mrr = summary.hot_mrr + summary.warm_mrr + summary.cold_mrr
         return summary
 
     # ---------- mapping ----------
 
     @staticmethod
-    def to_item(entity_type: str, e, is_favorite: bool = False) -> PipelineItem:
+    def to_item(entity_type: str, e) -> PipelineItem:
         owner_name = e.owner.full_name if getattr(e, "owner", None) else ""
         details = e.contact_details or []
 
@@ -343,13 +265,12 @@ class PipelineService:
 
         common = dict(
             id=e.id,
-            priority=e.priority,
+            is_hot=e.is_hot,
             next_action=e.next_action,
             deal_value=e.deal_value,
             deal_value_period=e.deal_value_period,
             deal_stage=e.deal_stage,
             waiting_on=e.waiting_on,
-            is_favorite=is_favorite,
             status=e.current_relationship_status,
             last_contacted_at=e.last_contacted_at,
             next_contact_due_at=e.next_contact_due_at,
@@ -402,19 +323,17 @@ class PipelineService:
         return entity
 
     @classmethod
-    async def _reload_item(cls, db: AsyncSession, entity_type: str, entity_id: int, user: User) -> PipelineItem:
+    async def _reload_item(cls, db: AsyncSession, entity_type: str, entity_id: int) -> PipelineItem:
         if entity_type == "company":
             reloaded = (await cls._load_companies(db, [entity_id]))[0]
-            favs = await cls._favorite_set(db, user.id, [entity_id], [])
         else:
             reloaded = (await cls._load_contacts(db, [entity_id]))[0]
-            favs = await cls._favorite_set(db, user.id, [], [entity_id])
-        return cls.to_item(entity_type, reloaded, (entity_type, entity_id) in favs)
+        return cls.to_item(entity_type, reloaded)
 
     @classmethod
     async def get_item(cls, db: AsyncSession, entity_type: str, entity_id: int, user: User) -> PipelineItem:
         await cls._get_entity(db, entity_type, entity_id, user)
-        return await cls._reload_item(db, entity_type, entity_id, user)
+        return await cls._reload_item(db, entity_type, entity_id)
 
     # ---------- writes ----------
 
@@ -427,17 +346,15 @@ class PipelineService:
         data: PipelineUpdate,
         user: User,
     ) -> PipelineItem:
-        """Inline edit of priority / next action / follow-up / deal fields, with a history entry"""
+        """Inline edit of hot flag / next action / follow-up / deal fields, with a history entry"""
         entity = await cls._get_entity(db, entity_type, entity_id, user)
 
         fields = data.model_fields_set
         changes: List[str] = []
 
-        if "priority" in fields and data.priority != entity.priority:
-            old = entity.priority.value if entity.priority else "none"
-            new = data.priority.value if data.priority else "none"
-            changes.append(f"Priority: {old} -> {new}")
-            entity.priority = data.priority
+        if "is_hot" in fields and data.is_hot is not None and data.is_hot != entity.is_hot:
+            changes.append("Marked as hot lead" if data.is_hot else "Removed from hot leads")
+            entity.is_hot = data.is_hot
 
         if "next_action" in fields:
             new_action = (data.next_action or "").strip() or None
@@ -488,29 +405,4 @@ class PipelineService:
                 )
             await db.commit()
 
-        return await cls._reload_item(db, entity_type, entity_id, user)
-
-    @classmethod
-    async def set_favorite(
-        cls, db: AsyncSession, entity_type: str, entity_id: int, user: User, favorite: bool
-    ) -> PipelineItem:
-        """Star / un-star an item for the current user (idempotent)"""
-        await cls._get_entity(db, entity_type, entity_id, user)
-        existing = (
-            await db.execute(
-                select(UserFavorite).where(
-                    UserFavorite.user_id == user.id,
-                    UserFavorite.entity_type == entity_type,
-                    UserFavorite.entity_id == entity_id,
-                )
-            )
-        ).scalar_one_or_none()
-
-        if favorite and existing is None:
-            db.add(UserFavorite(user_id=user.id, entity_type=entity_type, entity_id=entity_id))
-            await db.commit()
-        elif not favorite and existing is not None:
-            await db.delete(existing)
-            await db.commit()
-
-        return await cls._reload_item(db, entity_type, entity_id, user)
+        return await cls._reload_item(db, entity_type, entity_id)

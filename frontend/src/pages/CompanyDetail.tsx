@@ -11,7 +11,6 @@ import {
   CompanyCreate,
   CompanyHistoryEntry,
   Contact,
-  Priority,
   RelationshipStatus,
   User,
 } from '../types';
@@ -20,10 +19,9 @@ import { useConfirm, useToast } from '../contexts/UiContext';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { fmtDateTime, fromServer, toInputLocal } from '../utils/dates';
 import { STAGE_META, STATUS_LABELS, WAITING_META, detailPath, formatDeal } from '../utils/pipeline';
-import { PriorityBadge, PriorityPicker } from '../components/PriorityBadge';
+import { HotBadge, HotToggle } from '../components/HotToggle';
 import { PipelineFields } from '../components/PipelineFields';
 import { DateTimeInput } from '../components/DateTimeInput';
-import { FavoriteStar } from '../components/FavoriteStar';
 import { HistoryTimeline } from '../components/HistoryTimeline';
 import { LogInteractionModal } from '../components/LogInteractionModal';
 import { DetailRow, DetailsEditor } from '../components/DetailsEditor';
@@ -57,7 +55,6 @@ export const CompanyDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [favorite, setFavorite] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
 
   const [formData, setFormData] = useState<CompanyCreate>({
@@ -66,7 +63,7 @@ export const CompanyDetailPage: React.FC = () => {
     notes: '',
     current_relationship_status: RelationshipStatus.NEW,
     reminders_enabled: true,
-    priority: null,
+    is_hot: false,
     next_action: '',
     deal_value: null,
     deal_value_period: null,
@@ -116,7 +113,7 @@ export const CompanyDetailPage: React.FC = () => {
         current_relationship_status: data.current_relationship_status,
         reminders_enabled: data.reminders_enabled,
         next_contact_due_at: data.next_contact_due_at ? toInputLocal(data.next_contact_due_at) : undefined,
-        priority: data.priority ?? null,
+        is_hot: data.is_hot,
         next_action: data.next_action || '',
         deal_value: data.deal_value ?? null,
         deal_value_period: data.deal_value_period ?? null,
@@ -126,7 +123,6 @@ export const CompanyDetailPage: React.FC = () => {
         contact_details: [],
       });
       setRows(data.contact_details.map((d, i) => ({ _idx: i, type: d.type, value: d.value, label: d.label || '' })));
-      pipelineApi.get('company', data.id).then((item) => setFavorite(item.is_favorite)).catch(() => undefined);
       setError('');
     } catch (err: any) {
       setError(err.message || 'Failed to load company');
@@ -172,25 +168,14 @@ export const CompanyDetailPage: React.FC = () => {
     }
   }, [id, searchParams, loadCompany, loadHistory, loadPeople]);
 
-  const toggleFavorite = async (next: boolean) => {
-    if (!company) return;
-    setFavorite(next);
-    try {
-      await pipelineApi.setFavorite('company', company.id, next);
-      toast(next ? 'Added to favorites' : 'Removed from favorites');
-    } catch (err: any) {
-      setFavorite(!next);
-      toast(err.message || 'Failed to update favorites', 'error');
-    }
-  };
-
-  const handlePriorityChange = async (priority: Priority | null) => {
+  const handleHotChange = async (is_hot: boolean) => {
     if (!company) return;
     try {
-      await pipelineApi.update('company', company.id, { priority });
+      await pipelineApi.update('company', company.id, { is_hot });
       await Promise.all([loadCompany(), loadHistory()]);
+      toast(is_hot ? 'Marked as hot lead' : 'Removed from hot leads');
     } catch (err: any) {
-      toast(err.message || 'Failed to update priority', 'error');
+      toast(err.message || 'Failed to update', 'error');
     }
   };
 
@@ -342,7 +327,7 @@ export const CompanyDetailPage: React.FC = () => {
               <DetailsEditor kinds={DETAIL_KINDS} rows={rows} onChange={setRows} />
             </FormSection>
 
-            <FormSection title="Hot list & deal" description="Rank this company to show it in the Hot list, and track the deal.">
+            <FormSection title="Hot lead & deal" description="Mark this company as a hot lead to show it in the Hot leads list, and track the deal.">
               <PipelineFields values={formData} onChange={(patch) => setFormData({ ...formData, ...patch })} />
               <div className="field">
                 <label htmlFor="next_contact_due_at">Next follow-up</label>
@@ -396,18 +381,18 @@ export const CompanyDetailPage: React.FC = () => {
             <div>
               <div className="detail-title">
                 <h1>{c.name}</h1>
-                <FavoriteStar value={favorite} onToggle={toggleFavorite} />
               </div>
               <div className="detail-sub">{c.industry || <span className="faint">No industry</span>}</div>
               <div className="detail-badges">
                 <StatusBadge status={c.current_relationship_status} />
-                <PriorityPicker value={c.priority} onChange={handlePriorityChange} size="sm" />
+                {c.is_hot && <HotBadge size="sm" />}
                 {stage && <span className="pl-stage" style={{ color: stage.color, background: stage.bg }}>{stage.label}</span>}
                 {waiting && <span className="pl-waiting" style={{ color: waiting.color, background: waiting.bg }}>{waiting.label}</span>}
               </div>
             </div>
           </div>
           <div className="page-actions">
+            <HotToggle variant="button" value={!!c.is_hot} onChange={handleHotChange} />
             <button type="button" className="btn btn-primary btn-lg" onClick={() => setLogOpen(true)}>+ Log interaction</button>
             <button type="button" className="btn btn-lg" onClick={() => setEditing(true)}>Edit</button>
             <RowMenu actions={[{ label: 'Delete company', danger: true, onClick: handleDelete, hidden: !canDelete }]} />
@@ -426,7 +411,7 @@ export const CompanyDetailPage: React.FC = () => {
 
           <aside className="stack">
             <section className="card">
-              <div className="card-head"><h3>Hot list</h3></div>
+              <div className="card-head"><h3>Deal</h3></div>
               <dl className="info-list">
                 <InfoRow label="Next action">{c.next_action || <span className="faint">Not set</span>}</InfoRow>
                 <InfoRow label="Follow-up">
@@ -455,7 +440,7 @@ export const CompanyDetailPage: React.FC = () => {
                           {p.first_name} {p.last_name}
                           {p.job_title && <span className="cell-sub">{p.job_title}</span>}
                         </span>
-                        {p.priority && <PriorityBadge value={p.priority} size="sm" />}
+                        {p.is_hot && <HotBadge size="sm" />}
                       </Link>
                     </li>
                   ))}

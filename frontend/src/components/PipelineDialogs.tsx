@@ -4,14 +4,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { companyApi, contactApi, pipelineApi } from '../api';
-import { EntityType, PipelineItem, Priority, RelationshipStatus } from '../types';
-import { PriorityBadge } from './PriorityBadge';
+import { EntityType, PipelineItem, RelationshipStatus } from '../types';
 import { DateInput } from './DateInput';
 import { Modal } from './Modal';
 import { Alert, SearchIcon } from './ui';
 import {
   FOLLOW_UP_PRESETS,
-  PRIORITY_ORDER,
   STATUS_LABELS,
   followUpIso,
   followUpIsoFromDate,
@@ -147,7 +145,7 @@ interface Candidate {
   id: number;
   name: string;
   sub: string;
-  priority: Priority | null;
+  hot: boolean;
 }
 
 interface AddModalProps {
@@ -190,14 +188,14 @@ export const AddToPipelineModal: React.FC<AddModalProps> = ({ onClose, onChanged
             id: c.id,
             name: c.name,
             sub: c.industry || 'Company',
-            priority: c.priority ?? null,
+            hot: !!c.is_hot,
           })),
           ...contacts.items.map((c) => ({
             type: 'contact' as const,
             id: c.id,
             name: `${c.first_name} ${c.last_name}`,
             sub: [c.job_title, c.company_name].filter(Boolean).join(' · ') || 'Contact',
-            priority: c.priority ?? null,
+            hot: !!c.is_hot,
           })),
         ];
         setResults(rows);
@@ -211,14 +209,14 @@ export const AddToPipelineModal: React.FC<AddModalProps> = ({ onClose, onChanged
     return () => clearTimeout(t);
   }, [search]);
 
-  const setPriority = async (row: Candidate, priority: Priority | null) => {
+  const setHot = async (row: Candidate, hot: boolean) => {
     const key = `${row.type}-${row.id}`;
     setBusyKey(key);
     setError('');
     try {
-      await pipelineApi.update(row.type, row.id, { priority });
+      await pipelineApi.update(row.type, row.id, { is_hot: hot });
       changed.current = true;
-      setResults((prev) => prev.map((r) => (r.type === row.type && r.id === row.id ? { ...r, priority } : r)));
+      setResults((prev) => prev.map((r) => (r.type === row.type && r.id === row.id ? { ...r, hot } : r)));
     } catch (err: any) {
       setError(err.message || 'Failed to update');
     } finally {
@@ -232,7 +230,7 @@ export const AddToPipelineModal: React.FC<AddModalProps> = ({ onClose, onChanged
   };
 
   return (
-    <Modal title="Add to hot list" onClose={close} size="wide">
+    <Modal title="Add hot lead" onClose={close} size="wide">
       <div className="modal-body">
         <div className="search">
           <span className="search-icon"><SearchIcon /></span>
@@ -250,10 +248,7 @@ export const AddToPipelineModal: React.FC<AddModalProps> = ({ onClose, onChanged
 
         <div className="pl-add-results">
           {!search.trim() && (
-            <p className="pl-add-hint">
-              Search for a company or contact, then rank it <strong>Hot</strong>, <strong>Warm</strong> or <strong>Cold</strong> to
-              add it to the hot list.
-            </p>
+            <p className="pl-add-hint">Search for a company or contact and mark it as a hot lead 🔥</p>
           )}
           {search.trim() && !loading && results.length === 0 && !error && (
             <p className="pl-add-hint">
@@ -274,23 +269,14 @@ export const AddToPipelineModal: React.FC<AddModalProps> = ({ onClose, onChanged
                   </div>
                 </div>
                 <div className="pl-add-actions">
-                  {PRIORITY_ORDER.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      disabled={busyKey === key}
-                      className={`pl-add-pick${r.priority === p ? ' active' : ''}`}
-                      onClick={() => setPriority(r, p)}
-                      aria-pressed={r.priority === p}
-                    >
-                      <PriorityBadge value={p} size="sm" />
-                    </button>
-                  ))}
-                  {r.priority && (
-                    <button type="button" className="pl-add-remove" disabled={busyKey === key} onClick={() => setPriority(r, null)} title="Remove from hot list">
-                      Remove
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className={`btn btn-sm${r.hot ? '' : ' btn-primary'}`}
+                    disabled={busyKey === key}
+                    onClick={() => setHot(r, !r.hot)}
+                  >
+                    {r.hot ? '✓ Hot lead · Remove' : '🔥 Mark as hot'}
+                  </button>
                 </div>
               </div>
             );

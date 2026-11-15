@@ -11,7 +11,6 @@ import {
   ContactContactDetailCreate,
   ContactCreate,
   HistoryEntry,
-  Priority,
   RelationshipStatus,
   User,
 } from '../types';
@@ -20,10 +19,9 @@ import { useConfirm, useToast } from '../contexts/UiContext';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { toInputLocal } from '../utils/dates';
 import { STAGE_META, STATUS_LABELS, WAITING_META, formatDeal } from '../utils/pipeline';
-import { PriorityPicker } from '../components/PriorityBadge';
+import { HotBadge, HotToggle } from '../components/HotToggle';
 import { PipelineFields } from '../components/PipelineFields';
 import { DateTimeInput } from '../components/DateTimeInput';
-import { FavoriteStar } from '../components/FavoriteStar';
 import { HistoryTimeline } from '../components/HistoryTimeline';
 import { LogInteractionModal } from '../components/LogInteractionModal';
 import { DetailRow, DetailsEditor } from '../components/DetailsEditor';
@@ -55,7 +53,6 @@ export const ContactDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [favorite, setFavorite] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
 
   const [formData, setFormData] = useState<ContactCreate>({
@@ -66,7 +63,7 @@ export const ContactDetailPage: React.FC = () => {
     notes: '',
     current_relationship_status: RelationshipStatus.NEW,
     reminders_enabled: true,
-    priority: null,
+    is_hot: false,
     next_action: '',
     deal_value: null,
     deal_value_period: null,
@@ -119,7 +116,7 @@ export const ContactDetailPage: React.FC = () => {
         last_contacted_at: data.last_contacted_at ? toInputLocal(data.last_contacted_at) : undefined,
         next_contact_due_at: data.next_contact_due_at ? toInputLocal(data.next_contact_due_at) : undefined,
         reminders_enabled: data.reminders_enabled,
-        priority: data.priority ?? null,
+        is_hot: data.is_hot,
         next_action: data.next_action || '',
         deal_value: data.deal_value ?? null,
         deal_value_period: data.deal_value_period ?? null,
@@ -132,7 +129,6 @@ export const ContactDetailPage: React.FC = () => {
           .filter((d) => d.type === 'email' || d.type === 'phone')
           .map((d, i) => ({ _idx: i, type: d.type, value: d.value, label: d.label || '' }))
       );
-      pipelineApi.get('contact', data.id).then((item) => setFavorite(item.is_favorite)).catch(() => undefined);
       setError('');
     } catch (err: any) {
       setError(err.message || 'Failed to load contact');
@@ -169,25 +165,14 @@ export const ContactDetailPage: React.FC = () => {
     }
   }, [id, searchParams, loadContact, loadHistory]);
 
-  const toggleFavorite = async (next: boolean) => {
-    if (!contact) return;
-    setFavorite(next);
-    try {
-      await pipelineApi.setFavorite('contact', contact.id, next);
-      toast(next ? 'Added to favorites' : 'Removed from favorites');
-    } catch (err: any) {
-      setFavorite(!next);
-      toast(err.message || 'Failed to update favorites', 'error');
-    }
-  };
-
-  const handlePriorityChange = async (priority: Priority | null) => {
+  const handleHotChange = async (is_hot: boolean) => {
     if (!contact) return;
     try {
-      await pipelineApi.update('contact', contact.id, { priority });
+      await pipelineApi.update('contact', contact.id, { is_hot });
       await Promise.all([loadContact(), loadHistory()]);
+      toast(is_hot ? 'Marked as hot lead' : 'Removed from hot leads');
     } catch (err: any) {
-      toast(err.message || 'Failed to update priority', 'error');
+      toast(err.message || 'Failed to update', 'error');
     }
   };
 
@@ -362,7 +347,7 @@ export const ContactDetailPage: React.FC = () => {
               <DetailsEditor kinds={DETAIL_KINDS} rows={rows} onChange={setRows} />
             </FormSection>
 
-            <FormSection title="Hot list & deal" description="Rank this contact to show it in the Hot list, and track the deal.">
+            <FormSection title="Hot lead & deal" description="Mark this contact as a hot lead to show it in the Hot leads list, and track the deal.">
               <PipelineFields values={formData} onChange={(patch) => setFormData({ ...formData, ...patch })} />
               <div className="field">
                 <label htmlFor="next_contact_due_at_date">Next follow-up</label>
@@ -417,7 +402,6 @@ export const ContactDetailPage: React.FC = () => {
             <div>
               <div className="detail-title">
                 <h1>{fullName}</h1>
-                <FavoriteStar value={favorite} onToggle={toggleFavorite} />
               </div>
               <div className="detail-sub">
                 {c.job_title}
@@ -427,13 +411,14 @@ export const ContactDetailPage: React.FC = () => {
               </div>
               <div className="detail-badges">
                 <StatusBadge status={c.current_relationship_status} />
-                <PriorityPicker value={c.priority} onChange={handlePriorityChange} size="sm" />
+                {c.is_hot && <HotBadge size="sm" />}
                 {stage && <span className="pl-stage" style={{ color: stage.color, background: stage.bg }}>{stage.label}</span>}
                 {waiting && <span className="pl-waiting" style={{ color: waiting.color, background: waiting.bg }}>{waiting.label}</span>}
               </div>
             </div>
           </div>
           <div className="page-actions">
+            <HotToggle variant="button" value={!!c.is_hot} onChange={handleHotChange} />
             <button type="button" className="btn btn-primary btn-lg" onClick={() => setLogOpen(true)}>+ Log interaction</button>
             <button type="button" className="btn btn-lg" onClick={() => setEditing(true)}>Edit</button>
             <RowMenu actions={[{ label: 'Delete contact', danger: true, onClick: handleDelete, hidden: !canDelete }]} />
@@ -450,7 +435,7 @@ export const ContactDetailPage: React.FC = () => {
 
           <aside className="stack">
             <section className="card">
-              <div className="card-head"><h3>Hot list</h3></div>
+              <div className="card-head"><h3>Deal</h3></div>
               <dl className="info-list">
                 <InfoRow label="Next action">{c.next_action || <span className="faint">Not set</span>}</InfoRow>
                 <InfoRow label="Follow-up">

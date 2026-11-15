@@ -338,3 +338,19 @@
 .pl-table { min-width: 1160px; }
 
 .pl-widget-item:hover { text-decoration: none; }
+
+/* ── Hot lead flag ──────────────────────────────────────────────── */
+.hot-badge { display: inline-flex; align-items: center; gap: 0.3rem; border: 1px solid #fda29b; background: #fee4e2; color: #b42318; border-radius: 999px; font-weight: 600; white-space: nowrap; line-height: 1; }
+.hot-badge-md { padding: 0.35rem 0.7rem; font-size: 0.82rem; }
+.hot-badge-sm { padding: 0.22rem 0.55rem; font-size: 0.72rem; }
+.hot-flame { border: 0; background: none; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.15rem 0.25rem; border-radius: 8px; filter: grayscale(1); opacity: 0.4; transition: filter 0.15s, opacity 0.15s, transform 0.15s; }
+.hot-flame:hover:not(:disabled) { opacity: 0.85; transform: scale(1.15); }
+.hot-flame.on { filter: none; opacity: 1; }
+.hot-btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.7rem 1.1rem; border: 1px solid #d0d5dd; border-radius: 8px; background: #fff; color: var(--ink-2); font-size: 0.95rem; font-weight: 550; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.hot-btn:hover { background: var(--soft); }
+.hot-btn.on { background: #fee4e2; border-color: #fda29b; color: #b42318; }
+.pl-col-hot { width: 44px; padding-right: 0 !important; }
+.pl-tiles-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 640px; }
+.pl-tile-static { cursor: default; }
+.pl-tile-static:hover { transform: none; box-shadow: none; }
+.pl-widget-count { font-size: 0.78rem; margin-left: 0.4rem; padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--soft); color: var(--muted); font-weight: 600; vertical-align: middle; }

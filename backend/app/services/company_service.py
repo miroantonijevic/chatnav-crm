@@ -221,7 +221,7 @@ class CompanyService:
             current_relationship_status=company_create.current_relationship_status,
             reminders_enabled=company_create.reminders_enabled,
             next_contact_due_at=company_create.next_contact_due_at,
-            priority=company_create.priority,
+            is_hot=company_create.is_hot,
             next_action=(company_create.next_action or "").strip() or None,
             deal_value=company_create.deal_value,
             deal_value_period=company_create.deal_value_period,
@@ -276,7 +276,7 @@ class CompanyService:
         scalar_fields = [
             'name', 'industry', 'notes', 'owner_user_id',
             'current_relationship_status', 'reminders_enabled', 'next_contact_due_at',
-            'priority', 'next_action',
+            'is_hot', 'next_action',
             'deal_value', 'deal_value_period', 'deal_stage', 'waiting_on',
         ]
         update_data = company_update.model_dump(exclude_unset=True)

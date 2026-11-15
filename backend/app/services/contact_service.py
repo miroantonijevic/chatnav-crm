@@ -243,7 +243,7 @@ class ContactService:
             last_contacted_at=contact_create.last_contacted_at,
             next_contact_due_at=contact_create.next_contact_due_at,
             reminders_enabled=contact_create.reminders_enabled,
-            priority=contact_create.priority,
+            is_hot=contact_create.is_hot,
             next_action=(contact_create.next_action or "").strip() or None,
             deal_value=contact_create.deal_value,
             deal_value_period=contact_create.deal_value_period,

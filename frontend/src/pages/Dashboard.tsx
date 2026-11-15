@@ -177,7 +177,7 @@ export const DashboardPage: React.FC = () => {
           <div className="page-actions">
             <Link to="/contacts/new" className="btn">+ Contact</Link>
             <Link to="/companies/new" className="btn">+ Company</Link>
-            <Link to="/pipeline" className="btn btn-primary">Open hot list</Link>
+            <Link to="/pipeline" className="btn btn-primary">Open hot leads</Link>
           </div>
         </div>
 
@@ -212,7 +212,7 @@ export const DashboardPage: React.FC = () => {
               <h2>Needs attention</h2>
               <p className="card-sub">Follow-ups that are due or overdue</p>
             </div>
-            {attention.length > 0 && <Link to="/pipeline?due=overdue" className="btn btn-sm">View in hot list</Link>}
+            {attention.length > 0 && <Link to="/pipeline?due=overdue" className="btn btn-sm">View in hot leads</Link>}
           </div>
           {attention.length === 0 ? (
             <div className="card-body">

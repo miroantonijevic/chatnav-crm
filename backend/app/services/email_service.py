@@ -27,7 +27,7 @@ def _extra_rows(
     """Pipeline details shown in reminder emails (only the ones that are set)"""
     rows = []
     if priority:
-        rows.append(("Priority", priority.upper()))
+        rows.append(("Hot lead", "Yes"))
     if next_action:
         rows.append(("Next action", next_action))
     if stage:
