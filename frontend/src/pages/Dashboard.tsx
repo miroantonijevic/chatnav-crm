@@ -1,430 +1,329 @@
 /**
- * Dashboard page
+ * Dashboard
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { MainLayout } from '../layouts/MainLayout';
-import { fromServer, fmtDateTime, localNow, dtDate, dtTime, dtCombine } from '../utils/dates';
-import { contactApi, companyApi, reminderApi, dashboardApi } from '../api';
-import { Contact, ReminderStats, RelationshipStatus, EntityStats, ActivityStats } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/UiContext';
+import { usePageTitle } from '../hooks/usePageTitle';
+import { companyApi, contactApi, dashboardApi, reminderApi } from '../api';
+import { ActivityStats, Company, Contact, EntityStats, ReminderStats, RelationshipStatus } from '../types';
+import { HotListWidget } from '../components/HotListWidget';
+import { ContactedModal } from '../components/PipelineDialogs';
+import { FollowUpBadge } from '../components/EntityBits';
+import { Avatar, EmptyState, PageLoading, Person, StatusBadge } from '../components/ui';
+import { STATUS_LABELS, detailPath } from '../utils/pipeline';
 import { useScrollRestoration } from '../utils/useScrollRestoration';
-import './Dashboard.css';
+import '../styles/dashboard.css';
 
-const STATUS_LABELS: Record<string, string> = {
-  new: 'New',
-  contacted: 'Contacted',
-  'follow-up-needed': 'Follow-up Needed',
-  interested: 'Interested',
-  'not-interested': 'Not Interested',
-  customer: 'Customer',
-  inactive: 'Inactive',
-};
+const ACTIVITY_RANGES = [7, 14, 30, 60, 90];
 
-/** Format a "YYYY-MM-DD" bucket as "DD.MM" (parsed as local, no timezone shift). */
-const formatActivityDate = (value: string): string => {
+/** "YYYY-MM-DD" bucket as "DD.MM." */
+const formatBucket = (value: string): string => {
   const [, month, day] = value.split('-');
-  return `${day}.${month}`;
+  return `${day}.${month}.`;
 };
 
-const ACTIVITY_RANGE_OPTIONS = [7, 14, 30, 60, 90];
+const STATUS_COLORS: Record<string, string> = {
+  new: '#98a2b3',
+  contacted: '#2e90fa',
+  'follow-up-needed': '#f79009',
+  interested: '#7a5af8',
+  'not-interested': '#f04438',
+  customer: '#12b76a',
+  inactive: '#d0d5dd',
+};
+
+interface AttentionItem {
+  type: 'contact' | 'company';
+  id: number;
+  name: string;
+  sub: string;
+  status: RelationshipStatus;
+  due: string;
+  owner: string;
+  next_action?: string | null;
+}
+
+function toAttention(contacts: Contact[], companies: Company[]): AttentionItem[] {
+  const items: AttentionItem[] = [
+    ...contacts.map((c) => ({
+      type: 'contact' as const,
+      id: c.id,
+      name: `${c.first_name} ${c.last_name}`,
+      sub: c.company_name || c.job_title || 'Contact',
+      status: c.current_relationship_status,
+      due: c.next_contact_due_at ?? '',
+      owner: c.owner_full_name,
+      next_action: c.next_action,
+    })),
+    ...companies.map((c) => ({
+      type: 'company' as const,
+      id: c.id,
+      name: c.name,
+      sub: c.industry || 'Company',
+      status: c.current_relationship_status,
+      due: c.next_contact_due_at ?? '',
+      owner: c.owner_full_name,
+      next_action: c.next_action,
+    })),
+  ];
+  return items.filter((i) => i.due).sort((a, b) => a.due.localeCompare(b.due)).slice(0, 10);
+}
+
+const StatusBreakdown: React.FC<{ title: string; stats: EntityStats; to: string }> = ({ title, stats, to }) => {
+  const total = Object.values(stats.by_status).reduce((a, b) => a + b, 0) || 1;
+  return (
+    <div className="breakdown">
+      <div className="breakdown-head">
+        <strong>{title}</strong>
+        <Link to={to}>{stats.total} total →</Link>
+      </div>
+      <div className="breakdown-bar" role="img" aria-label={`${title} by status`}>
+        {Object.values(RelationshipStatus).map((s) => {
+          const n = stats.by_status[s] ?? 0;
+          return n > 0 ? <span key={s} style={{ width: `${(n / total) * 100}%`, background: STATUS_COLORS[s] }} title={`${STATUS_LABELS[s]}: ${n}`} /> : null;
+        })}
+      </div>
+      <ul className="breakdown-legend">
+        {Object.values(RelationshipStatus).map((s) => (
+          <li key={s}><i style={{ background: STATUS_COLORS[s] }} />{STATUS_LABELS[s]} <b>{stats.by_status[s] ?? 0}</b></li>
+        ))}
+      </ul>
+    </div>
+  );
+};
 
 export const DashboardPage: React.FC = () => {
-  const [dueContacts, setDueContacts] = useState<Contact[]>([]);
-  const [reminderStats, setReminderStats] = useState<ReminderStats | null>(null);
+  usePageTitle('Dashboard');
+  const { user } = useAuth();
+  const toast = useToast();
+
+  const [attention, setAttention] = useState<AttentionItem[]>([]);
+  const [reminders, setReminders] = useState<ReminderStats | null>(null);
   const [contactStats, setContactStats] = useState<EntityStats | null>(null);
   const [companyStats, setCompanyStats] = useState<EntityStats | null>(null);
-  const [activityStats, setActivityStats] = useState<ActivityStats | null>(null);
-  const [activityDays, setActivityDays] = useState(30);
+  const [activity, setActivity] = useState<ActivityStats | null>(null);
+  const [days, setDays] = useState(30);
   const [activityLoading, setActivityLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [logItem, setLogItem] = useState<AttentionItem | null>(null);
   useScrollRestoration('scroll:dashboard', !loading);
-  const [logModal, setLogModal] = useState<{
-    id: number;
-    name: string;
-    currentStatus?: RelationshipStatus;
-  } | null>(null);
-  const [logForm, setLogForm] = useState({
-    status: RelationshipStatus.CONTACTED as string,
-    interaction_at: localNow(),
-    next_contact_due_at: '',
-    note: '',
-  });
-  const [logSubmitting, setLogSubmitting] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  useEffect(() => {
-    loadActivity(activityDays);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activityDays]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
-      const [dueContactsData, stats, contactStatsData, companyStatsData] = await Promise.all([
-        contactApi.list({ due_only: true, limit: 10 }),
+      const [dueContacts, dueCompanies, stats, cStats, coStats] = await Promise.all([
+        contactApi.list({ due_only: true, limit: 10, sort_by: 'next_contact_due_at' }),
+        companyApi.list({ due_only: true, limit: 10, sort_by: 'next_contact_due_at' }),
         reminderApi.getStats(),
         contactApi.getStats(),
         companyApi.getStats(),
       ]);
-      setDueContacts(dueContactsData.items);
-      setReminderStats(stats);
-      setContactStats(contactStatsData);
-      setCompanyStats(companyStatsData);
-    } catch (error) {
-      console.error('Failed to load dashboard data:', error);
+      setAttention(toAttention(dueContacts.items, dueCompanies.items));
+      setReminders(stats);
+      setContactStats(cStats);
+      setCompanyStats(coStats);
+    } catch (err) {
+      console.error('Failed to load dashboard data:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadActivity = async (days: number) => {
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    let cancelled = false;
     setActivityLoading(true);
-    try {
-      const activityData = await dashboardApi.getActivity(days);
-      setActivityStats(activityData);
-    } catch (error) {
-      console.error('Failed to load activity stats:', error);
-    } finally {
-      setActivityLoading(false);
-    }
-  };
+    dashboardApi
+      .getActivity(days)
+      .then((data) => !cancelled && setActivity(data))
+      .catch((err) => console.error('Failed to load activity stats:', err))
+      .finally(() => !cancelled && setActivityLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [days]);
 
-  const openLogModal = (id: number, name: string, currentStatus?: RelationshipStatus) => {
-    setLogModal({ id, name, currentStatus });
-    setLogForm({
-      status: currentStatus ?? RelationshipStatus.CONTACTED,
-      interaction_at: localNow(),
-      next_contact_due_at: '',
-      note: '',
-    });
-  };
+  const dueNow = (reminders?.due_now ?? 0) + (reminders?.companies_due_now ?? 0);
+  const upcoming = (reminders?.upcoming_7_days ?? 0) + (reminders?.companies_upcoming_7_days ?? 0);
+  const firstName = user?.full_name?.split(' ')[0] ?? '';
 
-  const closeLogModal = () => {
-    if (logSubmitting) return;
-    setLogModal(null);
-  };
-
-  const handleLogSubmit = async () => {
-    if (!logModal) return;
-    setLogSubmitting(true);
-    try {
-      const interaction_at = dtCombine(
-        dtDate(logForm.interaction_at),
-        dtTime(logForm.interaction_at),
-      );
-      const next_contact_due_at = logForm.next_contact_due_at
-        ? dtCombine(dtDate(logForm.next_contact_due_at), dtTime(logForm.next_contact_due_at))
-        : null;
-      const payload = {
-        status: logForm.status,
-        interaction_at,
-        next_contact_due_at,
-        note: logForm.note || undefined,
-      };
-      await contactApi.markContacted(logModal.id, payload);
-      setLogModal(null);
-      await loadData();
-    } catch (error) {
-      console.error('Failed to log interaction:', error);
-    } finally {
-      setLogSubmitting(false);
-    }
-  };
-
-  const handleMarkContactContacted = (id: number, name: string, currentStatus?: RelationshipStatus) =>
-    openLogModal(id, name, currentStatus);
+  const today = useMemo(
+    () => new Date().toLocaleDateString('hr-HR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+    []
+  );
 
   if (loading) {
     return (
       <MainLayout>
-        <div className="loading">Loading dashboard...</div>
+        <PageLoading />
       </MainLayout>
     );
   }
 
   return (
     <MainLayout>
-      <div className="dashboard">
-        <h1>Dashboard</h1>
-
-        <div className="stats-grid">
-          <div className="stat-card">
-            <h3>Contacts Due Now</h3>
-            <div className="stat-value">{reminderStats?.due_now || 0}</div>
-            <p>Contacts needing follow-up</p>
+      <div className="page">
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Welcome back{firstName ? `, ${firstName}` : ''} 👋</h1>
+            <p className="page-sub">{today}</p>
           </div>
-
-          <div className="stat-card">
-            <h3>Contacts Upcoming (7 days)</h3>
-            <div className="stat-value">{reminderStats?.upcoming_7_days || 0}</div>
-            <p>Contacts with upcoming follow-ups</p>
+          <div className="page-actions">
+            <Link to="/contacts/new" className="btn">+ Contact</Link>
+            <Link to="/companies/new" className="btn">+ Company</Link>
+            <Link to="/pipeline" className="btn btn-primary">Open pipeline</Link>
           </div>
         </div>
 
-        {/* Contacts needing attention */}
-        <div className="section">
-          <div className="section-header">
-            <h2>Contacts Needing Attention</h2>
-            <Link to="/contacts?due_only=true" className="btn-link">View All</Link>
-          </div>
+        <div className="kpi-grid">
+          <Link to="/pipeline?due=overdue" className={`kpi${dueNow > 0 ? ' kpi-alert' : ''}`}>
+            <span className="kpi-icon">⏰</span>
+            <span className="kpi-value">{dueNow}</span>
+            <span className="kpi-label">Follow-ups due</span>
+          </Link>
+          <Link to="/pipeline?due=week" className="kpi">
+            <span className="kpi-icon">📅</span>
+            <span className="kpi-value">{upcoming}</span>
+            <span className="kpi-label">Coming up in 7 days</span>
+          </Link>
+          <Link to="/contacts" className="kpi">
+            <span className="kpi-icon">👤</span>
+            <span className="kpi-value">{contactStats?.total ?? 0}</span>
+            <span className="kpi-label">Contacts</span>
+          </Link>
+          <Link to="/companies" className="kpi">
+            <span className="kpi-icon">🏢</span>
+            <span className="kpi-value">{companyStats?.total ?? 0}</span>
+            <span className="kpi-label">Companies</span>
+          </Link>
+        </div>
 
-          {dueContacts.length === 0 ? (
-            <p className="empty-message">No overdue or due contact follow-ups at this time. Great job!</p>
+        <HotListWidget />
+
+        <section className="card" style={{ marginBottom: '1.5rem' }}>
+          <div className="card-head">
+            <div>
+              <h2>Needs attention</h2>
+              <p className="card-sub">Follow-ups that are due or overdue</p>
+            </div>
+            {attention.length > 0 && <Link to="/pipeline?due=overdue" className="btn btn-sm">View in pipeline</Link>}
+          </div>
+          {attention.length === 0 ? (
+            <div className="card-body">
+              <EmptyState compact icon="🎉" title="You are all caught up">No overdue or due follow-ups right now. Great job!</EmptyState>
+            </div>
           ) : (
-            <div className="contacts-table">
-              <table>
+            <div className="table-wrap">
+              <table className="table">
                 <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Company</th>
-                    <th>Relationship Owner</th>
-                    <th>Created By</th>
-                    <th>Status</th>
-                    <th>Due Date</th>
-                    <th>Actions</th>
-                  </tr>
+                  <tr><th>Name</th><th>Status</th><th>Follow-up</th><th>Next action</th><th>Owner</th><th aria-label="Actions" /></tr>
                 </thead>
                 <tbody>
-                  {dueContacts.map((contact) => (
-                    <tr key={contact.id}>
-                      <td>{contact.first_name} {contact.last_name}</td>
-                      <td>{contact.company_name || '-'}</td>
+                  {attention.map((i) => (
+                    <tr key={`${i.type}-${i.id}`}>
                       <td>
-                        <span className="owner-badge" title={contact.owner_email}>
-                          {contact.owner_full_name}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="owner-badge" title={contact.created_by_email}>
-                          {contact.created_by_full_name}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="status-badge">{contact.current_relationship_status}</span>
-                      </td>
-                      <td>
-                        {contact.next_contact_due_at
-                          ? fmtDateTime(fromServer(contact.next_contact_due_at))
-                          : '-'}
-                      </td>
-                      <td>
-                        <div className="table-actions">
-                          <Link to={`/contacts/${contact.id}`} className="btn-view-small">View</Link>
-                          <button
-                            className="btn-log-small"
-                            onClick={() => handleMarkContactContacted(contact.id, `${contact.first_name} ${contact.last_name}`, contact.current_relationship_status)}
-                          >
-                            Mark as contacted
-                          </button>
+                        <div className="name-cell">
+                          <span className={`pl-type pl-type-${i.type}`}>{i.type === 'company' ? 'Company' : 'Contact'}</span>
+                          <Link to={detailPath(i.type, i.id)} className="row-link">{i.name}</Link>
                         </div>
+                        <div className="cell-sub">{i.sub}</div>
                       </td>
+                      <td><StatusBadge status={i.status} /></td>
+                      <td><FollowUpBadge value={i.due} /></td>
+                      <td className="cell-clamp">{i.next_action || <span className="faint">—</span>}</td>
+                      <td><Person name={i.owner} firstNameOnly /></td>
+                      <td className="right"><button type="button" className="btn btn-sm" onClick={() => setLogItem(i)}>✓ Contacted</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-        </div>
+        </section>
 
-        {(contactStats || companyStats) && (
-          <div className="dashboard-stats-summary">
-            {contactStats && (
-              <div className="stats-bar">
-                <span className="stats-bar-label">Contacts:</span>
-                <span className="stats-bar-item stats-bar-total">
-                  <strong>{contactStats.total}</strong> Total
-                </span>
-                <span className="stats-bar-item stats-bar-due">
-                  <strong>{contactStats.due_now}</strong> Due Now
-                </span>
-                {Object.values(RelationshipStatus).map((s) => (
-                  <span key={s} className="stats-bar-item">
-                    <strong>{contactStats.by_status[s] ?? 0}</strong> {STATUS_LABELS[s] ?? s}
-                  </span>
-                ))}
-              </div>
-            )}
-            {companyStats && (
-              <div className="stats-bar">
-                <span className="stats-bar-label">Companies:</span>
-                <span className="stats-bar-item stats-bar-total">
-                  <strong>{companyStats.total}</strong> Total
-                </span>
-                <span className="stats-bar-item stats-bar-due">
-                  <strong>{companyStats.due_now}</strong> Due Now
-                </span>
-                {Object.values(RelationshipStatus).map((s) => (
-                  <span key={s} className="stats-bar-item">
-                    <strong>{companyStats.by_status[s] ?? 0}</strong> {STATUS_LABELS[s] ?? s}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+        {contactStats && companyStats && (
+          <section className="card" style={{ marginBottom: '1.5rem' }}>
+            <div className="card-head"><h2>Relationships by status</h2></div>
+            <div className="card-body breakdown-grid">
+              <StatusBreakdown title="Contacts" stats={contactStats} to="/contacts" />
+              <StatusBreakdown title="Companies" stats={companyStats} to="/companies" />
+            </div>
+          </section>
         )}
 
-        {activityStats && (
-          <div className="section">
-            <div className="section-header">
-              <h2>Activity (last {activityStats.days} days)</h2>
-              <div className="activity-range-selector">
-                {ACTIVITY_RANGE_OPTIONS.map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    className={d === activityDays ? 'active' : ''}
-                    onClick={() => setActivityDays(d)}
-                  >
-                    {d}d
-                  </button>
-                ))}
-              </div>
+        <section className="card">
+          <div className="card-head">
+            <div>
+              <h2>Team activity</h2>
+              <p className="card-sub">Entries created, edited and logged over the last {days} days</p>
             </div>
-
-            <div className={`activity-chart${activityLoading ? ' activity-loading' : ''}`}>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={activityStats.by_day}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={formatActivityDate}
-                    interval={Math.max(0, Math.floor(activityStats.by_day.length / 8) - 1)}
-                    tick={{ fontSize: 11 }}
-                  />
-                  <YAxis allowDecimals={false} width={30} tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    labelFormatter={(value) => formatActivityDate(String(value))}
-                    formatter={(value) => [value, 'Activities']}
-                  />
-                  <Bar dataKey="count" fill="#667eea" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="segment" role="group" aria-label="Time range">
+              {ACTIVITY_RANGES.map((d) => (
+                <button key={d} type="button" className={d === days ? 'active' : ''} onClick={() => setDays(d)}>{d}d</button>
+              ))}
             </div>
+          </div>
+          <div className={`card-body${activityLoading ? ' is-refreshing' : ''}`}>
+            {activity && (
+              <>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={activity.by_day} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eaecf0" />
+                    <XAxis dataKey="date" tickFormatter={formatBucket} interval={Math.max(0, Math.floor(activity.by_day.length / 8) - 1)} tick={{ fontSize: 11, fill: '#667085' }} axisLine={false} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#667085' }} axisLine={false} tickLine={false} />
+                    <Tooltip labelFormatter={(v) => formatBucket(String(v))} formatter={(v) => [v, 'Activities']} cursor={{ fill: '#f1f3ff' }} />
+                    <Bar dataKey="count" fill="#667eea" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
 
-            {activityStats.by_user.length > 0 && (
-              <div className="activity-by-user">
-                <h3>By user</h3>
-                {activityStats.by_user.map((u) => (
-                  <div className="activity-user-row" key={u.user_id}>
-                    <div className="activity-user-header">
-                      <span className="activity-user-name">{u.user_name}</span>
-                      <span className="activity-user-counts">
-                        <span className="stats-bar-item"><strong>{u.created}</strong> Created</span>
-                        <span className="stats-bar-item"><strong>{u.edited}</strong> Edited</span>
-                        <span className="stats-bar-item"><strong>{u.interactions}</strong> Interactions</span>
-                        <span className="stats-bar-item stats-bar-total"><strong>{u.total}</strong> Total</span>
-                      </span>
-                    </div>
-                    <ResponsiveContainer width="100%" height={70}>
-                      <BarChart data={u.by_day}>
-                        <XAxis dataKey="date" hide />
-                        <YAxis hide allowDecimals={false} />
-                        <Tooltip
-                          labelFormatter={(value) => formatActivityDate(String(value))}
-                          formatter={(value) => [value, 'Activities']}
-                        />
-                        <Bar dataKey="count" fill="#764ba2" radius={[2, 2, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                {activity.by_user.length > 0 && (
+                  <div className="activity-users">
+                    {activity.by_user.map((u) => (
+                      <div className="activity-user" key={u.user_id}>
+                        <div className="activity-user-head">
+                          <Avatar name={u.user_name} size="sm" />
+                          <strong>{u.user_name}</strong>
+                          <span className="badge badge-brand">{u.total}</span>
+                        </div>
+                        <div className="activity-user-counts">
+                          <span><b>{u.created}</b> created</span>
+                          <span><b>{u.edited}</b> edited</span>
+                          <span><b>{u.interactions}</b> interactions</span>
+                        </div>
+                        <ResponsiveContainer width="100%" height={56}>
+                          <BarChart data={u.by_day}>
+                            <XAxis dataKey="date" hide />
+                            <YAxis hide allowDecimals={false} />
+                            <Tooltip labelFormatter={(v) => formatBucket(String(v))} formatter={(v) => [v, 'Activities']} />
+                            <Bar dataKey="count" fill="#9b8afb" radius={[2, 2, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
-        )}
+        </section>
       </div>
 
-      {/* Log interaction modal */}
-      {logModal && (
-        <div className="modal-overlay" onClick={closeLogModal}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <h3>Mark as Contacted</h3>
-            <p className="modal-subtitle">{logModal.name}</p>
-
-            <div className="form-group">
-              <label className="modal-label">Status</label>
-              <select
-                className="modal-select"
-                value={logForm.status}
-                onChange={(e) => setLogForm(f => ({ ...f, status: e.target.value }))}
-                disabled={logSubmitting}
-              >
-                {Object.values(RelationshipStatus).map((s) => (
-                  <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="modal-label">Interaction Date</label>
-              <div className="datetime-split">
-                <input
-                  type="date"
-                  className="modal-input"
-                  value={dtDate(logForm.interaction_at)}
-                  onChange={(e) => setLogForm(f => ({ ...f, interaction_at: dtCombine(e.target.value, dtTime(f.interaction_at)) }))}
-                  disabled={logSubmitting}
-                  required
-                />
-                <input
-                  type="time"
-                  className="modal-input"
-                  value={dtTime(logForm.interaction_at)}
-                  onChange={(e) => setLogForm(f => ({ ...f, interaction_at: dtCombine(dtDate(f.interaction_at), e.target.value) }))}
-                  disabled={logSubmitting}
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="modal-label">
-                Next Follow-up Date <span className="modal-optional">(optional — leave blank to clear)</span>
-              </label>
-              <div className="datetime-split">
-                <input
-                  type="date"
-                  className="modal-input"
-                  value={dtDate(logForm.next_contact_due_at)}
-                  onChange={(e) => setLogForm(f => ({ ...f, next_contact_due_at: dtCombine(e.target.value, dtTime(f.next_contact_due_at)) }))}
-                  disabled={logSubmitting}
-                />
-                <input
-                  type="time"
-                  className="modal-input"
-                  value={dtTime(logForm.next_contact_due_at)}
-                  onChange={(e) => setLogForm(f => ({ ...f, next_contact_due_at: dtCombine(dtDate(f.next_contact_due_at), e.target.value) }))}
-                  disabled={logSubmitting}
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="modal-label">
-                Note <span className="modal-optional">(optional)</span>
-              </label>
-              <textarea
-                className="modal-textarea"
-                rows={3}
-                placeholder="What was discussed?"
-                value={logForm.note}
-                onChange={(e) => setLogForm(f => ({ ...f, note: e.target.value }))}
-                disabled={logSubmitting}
-              />
-            </div>
-
-            <div className="modal-actions">
-              <button className="modal-btn-cancel" onClick={closeLogModal} disabled={logSubmitting}>
-                Cancel
-              </button>
-              <button className="modal-btn-submit" onClick={handleLogSubmit} disabled={logSubmitting}>
-                {logSubmitting ? 'Saving...' : 'Mark as Contacted'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {logItem && (
+        <ContactedModal
+          item={{ entity_type: logItem.type, id: logItem.id, name: logItem.name, status: logItem.status, next_action: logItem.next_action }}
+          onClose={() => setLogItem(null)}
+          onSaved={() => {
+            toast(`Logged contact with ${logItem.name}`);
+            setLogItem(null);
+            loadData();
+          }}
+        />
       )}
     </MainLayout>
   );

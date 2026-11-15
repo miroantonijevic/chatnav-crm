@@ -1,0 +1,63 @@
+/* Date / time pickers (Croatian format) */
+
+.pk-field { position: relative; display: block; flex: 1 1 auto; min-width: 0; }
+.pk-field input { width: 100%; padding-right: 2.2rem; font-variant-numeric: tabular-nums; }
+.pk-field.pk-invalid input { border-color: #d92d20 !important; background: #fff5f4; }
+.pk-icon-btn {
+  position: absolute;
+  right: 0.3rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #667085;
+  cursor: pointer;
+}
+.pk-icon-btn:hover:not(:disabled) { background: #eef0fe; color: #5568d3; }
+.pk-icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pk-datetime { display: flex; gap: 0.5rem; align-items: stretch; }
+.pk-datetime .pk-field:first-child { flex: 1.6 1 0; }
+.pk-datetime .pk-time { flex: 1 1 0; min-width: 96px; }
+
+.pk-popover { z-index: 3000 !important; padding: 0.6rem; }
+
+/* calendar */
+.pk-cal { width: 266px; user-select: none; }
+.pk-cal-head { display: flex; align-items: center; justify-content: space-between; gap: 0.15rem; margin-bottom: 0.5rem; }
+.pk-cal-title { flex: 1; text-align: center; font-weight: 600; font-size: 0.9rem; color: #2c3e50; }
+.pk-cal-head button, .pk-cal-foot button {
+  border: 0;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #475467;
+  font-size: 1rem;
+  line-height: 1;
+}
+.pk-cal-head button { width: 28px; height: 28px; }
+.pk-cal-head button:hover, .pk-cal-foot button:hover { background: #eef0fe; color: #5568d3; }
+.pk-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.pk-cal-weekdays span { text-align: center; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: #98a2b3; padding: 0.2rem 0; }
+.pk-cal-day { height: 32px; border: 1px solid transparent; border-radius: 8px; background: none; cursor: pointer; font-size: 0.85rem; color: #2c3e50; }
+.pk-cal-day.weekend { color: #b42318; }
+.pk-cal-day:hover { background: #eef0fe; }
+.pk-cal-day.today { border-color: #667eea; font-weight: 700; }
+.pk-cal-day.selected { background: #667eea; color: white !important; font-weight: 700; }
+.pk-cal-foot { display: flex; justify-content: space-between; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e6e9ef; }
+.pk-cal-foot button { padding: 0.3rem 0.6rem; font-size: 0.82rem; color: #667eea; font-weight: 500; }
+.pk-cal-clear { color: #d92d20 !important; }
+
+/* time lists */
+.pk-time-pop { padding: 0.4rem !important; }
+.pk-time-cols { display: flex; gap: 0.4rem; }
+.pk-time-col { width: 64px; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; scrollbar-width: thin; }
+.pk-time-col button { padding: 0.35rem 0; border: 0; border-radius: 6px; background: none; cursor: pointer; font-size: 0.88rem; color: #2c3e50; font-variant-numeric: tabular-nums; }
+.pk-time-col button:hover { background: #eef0fe; }
+.pk-time-col button.selected { background: #667eea; color: white; font-weight: 700; }

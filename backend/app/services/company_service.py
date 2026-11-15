@@ -12,6 +12,7 @@ from app.models.contact import RelationshipStatus
 from app.models.user import User
 from app.schemas.company import CompanyCreate, CompanyUpdate
 from app.services.company_history_service import CompanyHistoryService
+from app.utils.deal import apply_deal_defaults
 
 
 class CompanyService:
@@ -220,7 +221,14 @@ class CompanyService:
             current_relationship_status=company_create.current_relationship_status,
             reminders_enabled=company_create.reminders_enabled,
             next_contact_due_at=company_create.next_contact_due_at,
+            priority=company_create.priority,
+            next_action=(company_create.next_action or "").strip() or None,
+            deal_value=company_create.deal_value,
+            deal_value_period=company_create.deal_value_period,
+            deal_stage=company_create.deal_stage,
+            waiting_on=company_create.waiting_on,
         )
+        apply_deal_defaults(db_company)
 
         db.add(db_company)
         await db.flush()  # Get the ID without committing
@@ -268,11 +276,16 @@ class CompanyService:
         scalar_fields = [
             'name', 'industry', 'notes', 'owner_user_id',
             'current_relationship_status', 'reminders_enabled', 'next_contact_due_at',
+            'priority', 'next_action',
+            'deal_value', 'deal_value_period', 'deal_stage', 'waiting_on',
         ]
         update_data = company_update.model_dump(exclude_unset=True)
         for field in scalar_fields:
             if field in update_data:
                 setattr(company, field, update_data[field])
+        if 'next_action' in update_data:
+            company.next_action = (update_data['next_action'] or '').strip() or None
+        apply_deal_defaults(company)
 
         # If contact_details provided, replace all existing
         if company_update.contact_details is not None:

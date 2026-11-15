@@ -4,6 +4,7 @@ from app.models.contact import Contact, RelationshipStatus
 from app.models.relationship_history import RelationshipHistory
 from app.models.reminder_log import ReminderLog
 from app.models.settings import Settings
+from app.models.favorite import UserFavorite
 
 __all__ = [
     "User",
@@ -13,4 +14,5 @@ __all__ = [
     "RelationshipHistory",
     "ReminderLog",
     "Settings",
+    "UserFavorite",
 ]

@@ -12,6 +12,7 @@ from app.services.contact_service import ContactService
 from app.services.history_service import HistoryService
 from app.api.dependencies import get_current_active_user
 from app.models.user import User, UserRole
+from app.utils.sentinel import UNSET
 from app.models.contact import RelationshipStatus
 
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
@@ -27,6 +28,7 @@ async def list_contacts(
     upcoming_only: bool = Query(False, description="Show only contacts with upcoming follow-ups"),
     sort_by: Optional[str] = Query(None, description="Column to sort by"),
     sort_order: str = Query("asc", pattern="^(asc|desc)$", description="Sort direction"),
+    company_id: Optional[int] = Query(None, description="Only contacts of this company"),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -44,6 +46,7 @@ async def list_contacts(
         upcoming_only=upcoming_only,
         sort_by=sort_by,
         sort_order=sort_order,
+        company_id=company_id,
     )
     total = await ContactService.count_all(
         db,
@@ -51,7 +54,8 @@ async def list_contacts(
         search=search,
         status=status,
         due_only=due_only,
-        upcoming_only=upcoming_only
+        upcoming_only=upcoming_only,
+        company_id=company_id,
     )
     return ContactListResponse(items=contacts, total=total)
 
@@ -219,5 +223,6 @@ async def mark_contact_contacted(
         status=body.status,
         interaction_at=body.interaction_at,
         next_contact_due_at=body.next_contact_due_at,
+        next_action=body.next_action if "next_action" in body.model_fields_set else UNSET,
     )
     return history

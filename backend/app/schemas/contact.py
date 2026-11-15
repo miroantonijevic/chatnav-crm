@@ -6,6 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, model_validator
 
 from app.models.contact import RelationshipStatus
+from app.schemas.deal import PipelineFieldsMixin
 
 
 class ContactContactDetailCreate(BaseModel):
@@ -25,7 +26,7 @@ class ContactContactDetailResponse(BaseModel):
 
 
 # Base contact schema
-class ContactBase(BaseModel):
+class ContactBase(PipelineFieldsMixin):
     first_name: str
     last_name: str
     company_id: Optional[int] = None
@@ -46,7 +47,7 @@ class ContactCreate(ContactBase):
 
 
 # Schema for updating a contact
-class ContactUpdate(BaseModel):
+class ContactUpdate(PipelineFieldsMixin):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     company_id: Optional[int] = None

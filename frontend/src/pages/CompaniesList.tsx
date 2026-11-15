@@ -1,174 +1,136 @@
 /**
  * Companies list page
  */
-import React, { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { MainLayout } from '../layouts/MainLayout';
-import { fmtDateTime, fromServer } from '../utils/dates';
 import { companyApi } from '../api';
-import { Company, RelationshipStatus, EntityStats } from '../types';
+import { Company, EntityStats, RelationshipStatus } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm, useToast } from '../contexts/UiContext';
+import { useListParams } from '../hooks/useListParams';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { useScrollRestoration } from '../utils/useScrollRestoration';
-import './Contacts.css';
-
-const STATUS_LABELS: Record<string, string> = {
-  new: 'New',
-  contacted: 'Contacted',
-  'follow-up-needed': 'Follow-up needed',
-  interested: 'Interested',
-  'not-interested': 'Not interested',
-  customer: 'Customer',
-  inactive: 'Inactive',
-};
-
-const PAGE_SIZE = 50;
+import { fromServer, fmtDate } from '../utils/dates';
+import { STATUS_LABELS, detailPath } from '../utils/pipeline';
+import { PriorityBadge } from '../components/PriorityBadge';
+import { Pagination } from '../components/Pagination';
+import { ContactLinks, FollowUpBadge } from '../components/EntityBits';
+import { Alert, EmptyState, Person, RowMenu, SearchBox, StatusBadge, TableSkeleton } from '../components/ui';
+import '../styles/lists.css';
 
 export const CompaniesListPage: React.FC = () => {
+  usePageTitle('Companies');
+  const { user } = useAuth();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const list = useListParams();
+  const { params, setParam, search, page, pageSize, sortBy, sortOrder } = list;
+  const dueOnly = params.get('due_only') === 'true';
+
   const [companies, setCompanies] = useState<Company[]>([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<EntityStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const reqRef = useRef(0);
   useScrollRestoration('scroll:companies', !loading);
 
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { user } = useAuth();
-
-  const search = searchParams.get('search') || '';
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
-  const sortBy = searchParams.get('sort_by') || '';
-  const sortOrder = searchParams.get('sort_order') === 'desc' ? 'desc' : 'asc';
-
-  useEffect(() => {
-    loadCompanies();
-  }, [search, page, sortBy, sortOrder]);
-
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  // Reset to page 1 whenever the search term or sorting changes
-  useEffect(() => {
-    if (page !== 1) {
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete('page');
-      setSearchParams(newParams);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, sortBy, sortOrder]);
-
-  const loadCompanies = async () => {
-    setLoading(true);
+  const load = useCallback(async () => {
+    const id = ++reqRef.current;
+    setRefreshing(true);
     try {
       const data = await companyApi.list({
         search: search || undefined,
-        skip: (page - 1) * PAGE_SIZE,
-        limit: PAGE_SIZE,
+        due_only: dueOnly,
+        skip: (page - 1) * pageSize,
+        limit: pageSize,
         sort_by: sortBy || undefined,
         sort_order: sortOrder,
       });
+      if (id !== reqRef.current) return;
       setCompanies(data.items);
       setTotal(data.total);
-    } catch (error) {
-      console.error('Failed to load companies:', error);
+      setError('');
+      if (data.items.length === 0 && data.total > 0 && page > 1) setParam({ page: String(Math.ceil(data.total / pageSize)) }, true);
+    } catch (err: any) {
+      if (id === reqRef.current) setError(err.message || 'Failed to load companies');
     } finally {
-      setLoading(false);
+      if (id === reqRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  };
+  }, [search, dueOnly, page, pageSize, sortBy, sortOrder, setParam]);
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
-      const data = await companyApi.getStats();
-      setStats(data);
-    } catch (error) {
-      console.error('Failed to load company stats:', error);
+      setStats(await companyApi.getStats());
+    } catch (err) {
+      console.error('Failed to load company stats:', err);
     }
-  };
+  }, []);
 
-  const handleSort = (column: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (sortBy === column) {
-      newParams.set('sort_order', sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      newParams.set('sort_by', column);
-      newParams.set('sort_order', 'asc');
-    }
-    setSearchParams(newParams);
-  };
+  useEffect(() => {
+    load();
+  }, [load]);
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
-  const sortArrow = (column: string) => (sortBy === column ? (sortOrder === 'asc' ? ' \u25b2' : ' \u25bc') : '');
+  const hasFilters = Boolean(search || dueOnly);
+  const canDelete = (c: Company) => user?.role === 'admin' || c.owner_user_id === user?.id;
 
-  const handleSearchChange = (value: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (value) {
-      newParams.set('search', value);
-    } else {
-      newParams.delete('search');
-    }
-    setSearchParams(newParams);
-  };
-
-  const hasActiveFilters = Boolean(search);
-
-  const handleClearFilters = () => {
-    const newParams = new URLSearchParams(searchParams);
-    newParams.delete('search');
-    newParams.delete('page');
-    setSearchParams(newParams);
-  };
-
-  const goToPage = (newPage: number) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (newPage > 1) {
-      newParams.set('page', newPage.toString());
-    } else {
-      newParams.delete('page');
-    }
-    setSearchParams(newParams);
-  };
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  const handleDelete = async (company: Company) => {
-    if (!confirm(`Are you sure you want to delete ${company.name}?`)) return;
+  const handleDelete = async (c: Company) => {
+    const ok = await confirm({
+      title: 'Delete company?',
+      message: <>{c.name} will be removed from your lists. Its history is kept.</>,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
-      await companyApi.delete(company.id);
-      loadCompanies();
+      await companyApi.delete(c.id);
+      toast(`${c.name} deleted`);
+      load();
       loadStats();
-    } catch (error: any) {
-      alert(error.message || 'Failed to delete company');
+    } catch (err: any) {
+      toast(err.message || 'Failed to delete company', 'error');
     }
   };
 
-  const canDelete = (company: Company) => {
-    return user?.role === 'admin' || company.owner_user_id === user?.id;
-  };
+  const detailValues = (c: Company, type: string) => c.contact_details.filter((d) => d.type === type).map((d) => d.value);
 
-  const getDetailsByType = (company: Company, type: string) => {
-    const items = company.contact_details.filter((d) => d.type === type);
-    if (items.length === 0) return '-';
-    return items.map((d) => (d.label ? `${d.value} (${d.label})` : d.value)).join(', ');
-  };
+  const Th: React.FC<{ k: string; children: React.ReactNode }> = ({ k, children }) => (
+    <th className="sortable" aria-sort={list.ariaSort(k)} onClick={() => list.toggleSort(k)}>
+      {children}{list.sortIndicator(k)}
+    </th>
+  );
 
   return (
     <MainLayout>
-      <div className="contacts-page">
+      <div className="page">
         <div className="page-header">
-          <h1>Companies</h1>
-          <Link to="/companies/new" className="btn-primary-inline">
-            + New Company
-          </Link>
+          <div>
+            <h1 className="page-title">Companies</h1>
+            <p className="page-sub">{stats ? `${stats.total} organisations you work with` : 'Organisations you work with'}</p>
+          </div>
+          <div className="page-actions">
+            <Link to="/companies/new" className="btn btn-primary btn-lg">+ New company</Link>
+          </div>
         </div>
 
         {stats && (
-          <div className="stats-bar">
-            <span className="stats-bar-item stats-bar-total">
-              <strong>{stats.total}</strong> Total
-            </span>
-            <span className="stats-bar-item stats-bar-due">
-              <strong>{stats.due_now}</strong> Due Now
-            </span>
+          <div className="stat-row" role="group" aria-label="Summary">
+            <button type="button" className={`stat-pill${!dueOnly ? ' active' : ''}`} onClick={() => setParam({ due_only: null })}>
+              <strong>{stats.total}</strong> All
+            </button>
+            <button type="button" className={`stat-pill is-warn${dueOnly ? ' active' : ''}`} onClick={() => setParam({ due_only: dueOnly ? null : 'true' })}>
+              <strong>{stats.due_now}</strong> Needs follow-up
+            </button>
             {Object.values(RelationshipStatus).map((s) => (
-              <span key={s} className="stats-bar-item">
+              <span key={s} className="stat-pill static">
                 <strong>{stats.by_status[s] ?? 0}</strong> {STATUS_LABELS[s] ?? s}
               </span>
             ))}
@@ -176,129 +138,83 @@ export const CompaniesListPage: React.FC = () => {
         )}
 
         <div className="filters">
-          <input
-            type="text"
-            placeholder="Search companies..."
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="search-input"
-          />
-
-          {hasActiveFilters && (
-            <button type="button" className="btn-clear-filters" onClick={handleClearFilters}>
-              Clear filters
-            </button>
-          )}
+          <SearchBox value={list.searchText} onChange={list.setSearchText} placeholder="Search name, industry, owner, contact details, notes…" label="Search companies" />
+          {hasFilters && <button type="button" className="link-btn" onClick={list.clearFilters}>Clear filters</button>}
         </div>
 
-        {loading ? (
-          <div className="loading">Loading companies...</div>
-        ) : companies.length === 0 ? (
-          <div className="empty-message">
-            <p>No companies found.</p>
-            <Link to="/companies/new">Create your first company</Link>
-          </div>
-        ) : (
-          <div className="contacts-table">
-            <table>
-              <thead>
-                <tr>
-                  <th className="sortable-header" onClick={() => handleSort('name')}>Name{sortArrow('name')}</th>
-                  <th className="sortable-header" onClick={() => handleSort('industry')}>Industry{sortArrow('industry')}</th>
-                  <th className="sortable-header" onClick={() => handleSort('owner')}>Relationship Owner{sortArrow('owner')}</th>
-                  <th className="sortable-header" onClick={() => handleSort('created_by')}>Created By{sortArrow('created_by')}</th>
-                  <th className="sortable-header" onClick={() => handleSort('created_at')}>Created At{sortArrow('created_at')}</th>
-                  <th className="sortable-header" onClick={() => handleSort('status')}>Status{sortArrow('status')}</th>
-                  <th className="sortable-header" onClick={() => handleSort('next_contact_due_at')}>Next Follow-up{sortArrow('next_contact_due_at')}</th>
-                  <th>Websites</th>
-                  <th>Phones</th>
-                  <th>Emails</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {companies.map((company) => (
-                  <tr key={company.id}>
-                    <td>
-                      <Link to={`/companies/${company.id}`} className="contact-name">
-                        {company.name}
-                      </Link>
-                    </td>
-                    <td>{company.industry || '-'}</td>
-                    <td>
-                      <span className="owner-badge" title={company.owner_email}>
-                        {company.owner_full_name}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="owner-info" title={company.created_by_email}>
-                        {company.created_by_full_name || '-'}
-                      </span>
-                    </td>
-                    <td>{fmtDateTime(fromServer(company.created_at))}</td>
-                    <td>
-                      <span className="status-badge">
-                        {STATUS_LABELS[company.current_relationship_status] ?? company.current_relationship_status}
-                      </span>
-                    </td>
-                    <td>
-                      {company.next_contact_due_at
-                        ? fmtDateTime(fromServer(company.next_contact_due_at))
-                        : '-'}
-                    </td>
-                    <td>{getDetailsByType(company, 'website')}</td>
-                    <td>{getDetailsByType(company, 'phone')}</td>
-                    <td>{getDetailsByType(company, 'email')}</td>
-                    <td>
-                      <div className="table-actions">
-                        <Link to={`/companies/${company.id}`} className="btn-link-small">
-                          View
-                        </Link>
-                        <Link to={`/companies/${company.id}?edit=true`} className="btn-link-small">
-                          Edit
-                        </Link>
-                        {canDelete(company) && (
-                          <button
-                            onClick={() => handleDelete(company)}
-                            className="btn-link-small btn-danger-link"
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {error && <Alert tone="error">{error}</Alert>}
 
-        {!loading && total > 0 && (
-          <div className="pagination">
-            <span className="pagination-info">
-              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
-            </span>
-            <div className="pagination-controls">
-              <button
-                className="btn-link-small"
-                disabled={page <= 1}
-                onClick={() => goToPage(page - 1)}
-              >
-                ← Previous
-              </button>
-              <span className="pagination-page">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                className="btn-link-small"
-                disabled={page >= totalPages}
-                onClick={() => goToPage(page + 1)}
-              >
-                Next →
-              </button>
+        {loading ? (
+          <TableSkeleton />
+        ) : companies.length === 0 ? (
+          hasFilters ? (
+            <EmptyState compact title="No companies match" action={<button type="button" className="btn" onClick={list.clearFilters}>Clear filters</button>}>
+              Try a different search or remove a filter.
+            </EmptyState>
+          ) : (
+            <EmptyState icon="🏢" title="No companies yet" action={<Link to="/companies/new" className="btn btn-primary btn-lg">+ Add your first company</Link>}>
+              Companies group your contacts and let you track a deal with a whole organisation.
+            </EmptyState>
+          )
+        ) : (
+          <>
+            <div className={`card table-card${refreshing ? ' is-refreshing' : ''}`}>
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <Th k="name">Name</Th>
+                      <th>Contact</th>
+                      <Th k="status">Status</Th>
+                      <Th k="next_contact_due_at">Follow-up</Th>
+                      <Th k="owner">Owner</Th>
+                      <Th k="created_at">Created</Th>
+                      <th aria-label="Actions" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {companies.map((c) => (
+                      <tr key={c.id}>
+                        <td>
+                          <div className="name-cell">
+                            <Link to={detailPath('company', c.id)} className="row-link">{c.name}</Link>
+                            {c.priority && <PriorityBadge value={c.priority} size="sm" />}
+                          </div>
+                          {c.industry && <div className="cell-sub">{c.industry}</div>}
+                        </td>
+                        <td><ContactLinks emails={detailValues(c, 'email')} phones={detailValues(c, 'phone')} /></td>
+                        <td><StatusBadge status={c.current_relationship_status} /></td>
+                        <td><FollowUpBadge value={c.next_contact_due_at} /></td>
+                        <td><Person name={c.owner_full_name} title={c.owner_email} firstNameOnly /></td>
+                        <td>
+                          <div className="nowrap">{fmtDate(fromServer(c.created_at))}</div>
+                          {c.created_by_full_name && <div className="cell-sub">by {c.created_by_full_name.split(' ')[0]}</div>}
+                        </td>
+                        <td className="right">
+                          <RowMenu
+                            actions={[
+                              { label: 'Open', to: detailPath('company', c.id) },
+                              { label: 'Edit', to: `${detailPath('company', c.id)}?edit=true` },
+                              { label: 'Delete', onClick: () => handleDelete(c), danger: true, hidden: !canDelete(c) },
+                            ]}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              pageSizeOptions={list.pageSizes}
+              onPageChange={(p) => setParam({ page: p > 1 ? String(p) : null })}
+              onPageSizeChange={(s) => setParam({ size: s === 25 ? null : String(s) })}
+            />
+          </>
         )}
       </div>
     </MainLayout>

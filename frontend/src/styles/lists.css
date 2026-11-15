@@ -1,0 +1,12 @@
+/* List pages (contacts, companies) */
+.name-cell { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.card.is-refreshing { opacity: 0.6; transition: opacity 0.15s; }
+.table-card { transition: opacity 0.15s; }
+
+.contact-links { display: flex; flex-direction: column; gap: 0.1rem; font-size: 0.84rem; min-width: 0; max-width: 260px; }
+.contact-links a { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contact-links a:hover { color: var(--brand-600); }
+.contact-links .badge { align-self: flex-start; margin-top: 0.15rem; }
+
+.stat-pill.static { cursor: default; }
+.stat-pill.static:hover { border-color: var(--line); background: var(--surface); }

@@ -164,6 +164,33 @@ Apply migrations:
 alembic upgrade head
 ```
 
+## Pipeline ("Hot list")
+
+The **Pipeline** page (`/pipeline`) is a single list of the companies *and* contacts that are being actively
+worked. An item is "in the pipeline" when it has a **priority** (`hot`, `warm` or `cold`); clearing the priority
+removes it. Each item can also carry a free-text **next action**, and uses the existing follow-up date and reminders.
+
+- Search, type / owner / status / follow-up filters, sorting and pagination are all done server-side over a
+  `UNION` of both tables (`GET /api/v1/pipeline`), so paging never hides rows from a filter or search.
+- Priority, next action and follow-up date can be edited inline (`PATCH /api/v1/pipeline/{company|contact}/{id}`);
+  each change is written to the item's history.
+- `GET /api/v1/pipeline/summary` powers the Hot / Warm / Cold / Overdue tiles.
+- The dashboard shows a Hot list / Favorites widget; priority and deal fields can also be set on the contact /
+  company edit forms.
+- **Deals**: each item can have a deal **stage** (lead, demo, trial, proposal, negotiation, won, lost), a
+  **waiting on** flag (client / us), and a **value** in EUR with a billing period (monthly, yearly, one-time). The
+  page header shows the recurring pipeline value as monthly-equivalent (yearly deals are divided by 12).
+- **Favorites** are personal stars (`PUT/DELETE /api/v1/pipeline/{type}/{id}/favorite`); the Favorites filter
+  shows your starred items even if they have no priority.
+- Reminder emails include the priority, next action, stage and deal value, and hot items get a `[HOT]` subject prefix.
+
+### Dates and numbers
+
+Dates are always shown and entered as `dd.mm.yyyy` (times as 24-hour `HH:mm`) regardless of the browser locale,
+using the `DateInput` / `TimeInput` / `DateTimeInput` components in `frontend/src/components` (typed input with
+auto-formatting plus a calendar with Croatian month names, weeks starting on Monday). Amounts use Croatian
+formatting (`1.234,50 €`) and accept `1.234,50`, `170` or `170,5` when typing.
+
 ## User Roles
 
 ### Admin

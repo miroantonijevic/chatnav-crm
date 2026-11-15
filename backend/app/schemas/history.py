@@ -3,7 +3,7 @@ Relationship history schemas
 """
 from typing import Optional, Any
 from datetime import datetime
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.contact import RelationshipStatus
 
@@ -14,6 +14,8 @@ class MarkContactedRequest(BaseModel):
     status: Optional[RelationshipStatus] = None
     interaction_at: Optional[datetime] = None
     next_contact_due_at: Optional[datetime] = None
+    # Only applied when present in the request body (explicit null / "" clears it)
+    next_action: Optional[str] = Field(None, max_length=500)
 
 
 # Schema for creating a manual interaction entry

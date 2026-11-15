@@ -14,6 +14,7 @@ from app.services.email_service import EmailService, NOT_CONFIGURED
 from app.services.contact_service import ContactService
 from app.services.company_service import CompanyService
 from app.core.config import settings
+from app.utils.deal import format_deal_value
 
 logger = logging.getLogger(__name__)
 
@@ -86,15 +87,20 @@ class ReminderService:
                     continue
 
                 contact_name = f"{contact.first_name} {contact.last_name}"
-                due_date_str = contact.next_contact_due_at.strftime("%Y-%m-%d %H:%M")
+                due_date_str = contact.next_contact_due_at.strftime("%d.%m.%Y. %H:%M")
 
                 subject, plain_body, html_body = EmailService.format_reminder_email(
                     contact_name=contact_name,
-                    company=contact.company or "N/A",
+                    company=contact.company.name if contact.company else "N/A",
                     status=contact.current_relationship_status.value,
                     due_date=due_date_str,
                     owner_name=contact.owner.full_name,
-                    contact_id=contact.id
+                    contact_id=contact.id,
+                    priority=contact.priority.value if contact.priority else None,
+                    next_action=contact.next_action,
+                    stage=contact.deal_stage.value if contact.deal_stage else None,
+                    waiting_on=contact.waiting_on.value if contact.waiting_on else None,
+                    deal_value=format_deal_value(contact.deal_value, contact.deal_value_period),
                 )
 
                 success, reason = await EmailService.send_email(
@@ -143,7 +149,7 @@ class ReminderService:
                 if existing_log.scalar_one_or_none():
                     continue
 
-                due_date_str = company.next_contact_due_at.strftime("%Y-%m-%d %H:%M")
+                due_date_str = company.next_contact_due_at.strftime("%d.%m.%Y. %H:%M")
 
                 subject, plain_body, html_body = EmailService.format_company_reminder_email(
                     company_name=company.name,
@@ -151,7 +157,12 @@ class ReminderService:
                     status=company.current_relationship_status.value,
                     due_date=due_date_str,
                     owner_name=company.owner.full_name,
-                    company_id=company.id
+                    company_id=company.id,
+                    priority=company.priority.value if company.priority else None,
+                    next_action=company.next_action,
+                    stage=company.deal_stage.value if company.deal_stage else None,
+                    waiting_on=company.waiting_on.value if company.waiting_on else None,
+                    deal_value=format_deal_value(company.deal_value, company.deal_value_period),
                 )
 
                 success, reason = await EmailService.send_email(

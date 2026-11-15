@@ -12,6 +12,7 @@ from app.models.company import Company
 from app.models.user import User, UserRole
 from app.schemas.contact import ContactCreate, ContactUpdate
 from app.services.history_service import HistoryService
+from app.utils.deal import apply_deal_defaults
 
 
 class ContactService:
@@ -36,9 +37,13 @@ class ContactService:
         status: Optional[RelationshipStatus] = None,
         due_only: bool = False,
         upcoming_only: bool = False,
+        company_id: Optional[int] = None,
     ) -> list:
         """Build the list of WHERE conditions shared by get_all and count_all"""
         conditions = [Contact.is_deleted == False]
+
+        if company_id is not None:
+            conditions.append(Contact.company_id == company_id)
 
         if search:
             # Each whitespace-separated word must match somewhere (any field) -
@@ -153,9 +158,10 @@ class ContactService:
         upcoming_only: bool = False,
         sort_by: Optional[str] = None,
         sort_order: str = "asc",
+        company_id: Optional[int] = None,
     ) -> List[Contact]:
         """Get all contacts with filtering and pagination - all users can see all contacts"""
-        conditions = ContactService._filter_conditions(search, status, due_only, upcoming_only)
+        conditions = ContactService._filter_conditions(search, status, due_only, upcoming_only, company_id)
 
         query = select(Contact).options(
             joinedload(Contact.owner),
@@ -209,10 +215,11 @@ class ContactService:
         search: Optional[str] = None,
         status: Optional[RelationshipStatus] = None,
         due_only: bool = False,
-        upcoming_only: bool = False
+        upcoming_only: bool = False,
+        company_id: Optional[int] = None,
     ) -> int:
         """Count contacts matching the same filters as get_all, ignoring skip/limit"""
-        conditions = ContactService._filter_conditions(search, status, due_only, upcoming_only)
+        conditions = ContactService._filter_conditions(search, status, due_only, upcoming_only, company_id)
         query = select(func.count(Contact.id)).where(*conditions)
         result = await db.execute(query)
         return result.scalar_one()
@@ -236,7 +243,14 @@ class ContactService:
             last_contacted_at=contact_create.last_contacted_at,
             next_contact_due_at=contact_create.next_contact_due_at,
             reminders_enabled=contact_create.reminders_enabled,
+            priority=contact_create.priority,
+            next_action=(contact_create.next_action or "").strip() or None,
+            deal_value=contact_create.deal_value,
+            deal_value_period=contact_create.deal_value_period,
+            deal_stage=contact_create.deal_stage,
+            waiting_on=contact_create.waiting_on,
         )
+        apply_deal_defaults(db_contact)
 
         db.add(db_contact)
         await db.flush()
@@ -284,6 +298,9 @@ class ContactService:
 
         for field, value in update_data.items():
             setattr(contact, field, value)
+        if 'next_action' in update_data:
+            contact.next_action = (update_data['next_action'] or '').strip() or None
+        apply_deal_defaults(contact)
 
         if contact_details is not None:
             for existing in list(contact.contact_details):

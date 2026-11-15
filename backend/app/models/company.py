@@ -3,11 +3,11 @@ Company model
 """
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Text, Integer, ForeignKey, DateTime, Boolean, Enum as SQLEnum
+from sqlalchemy import String, Text, Integer, Float, ForeignKey, DateTime, Boolean, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
-from app.models.contact import RelationshipStatus
+from app.models.contact import RelationshipStatus, Priority, DealStage, WaitingOn, DealPeriod
 
 
 class Company(Base):
@@ -30,6 +30,22 @@ class Company(Base):
     last_contacted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     next_contact_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Pipeline ("hot list") fields
+    priority: Mapped[Optional[Priority]] = mapped_column(
+        SQLEnum(Priority, native_enum=False, length=10), nullable=True, index=True
+    )
+    next_action: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    deal_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    deal_value_period: Mapped[Optional[DealPeriod]] = mapped_column(
+        SQLEnum(DealPeriod, native_enum=False, length=20), nullable=True
+    )
+    deal_stage: Mapped[Optional[DealStage]] = mapped_column(
+        SQLEnum(DealStage, native_enum=False, length=20), nullable=True, index=True
+    )
+    waiting_on: Mapped[Optional[WaitingOn]] = mapped_column(
+        SQLEnum(WaitingOn, native_enum=False, length=10), nullable=True
+    )
 
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

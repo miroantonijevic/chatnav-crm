@@ -1,70 +1,64 @@
 /**
- * Company detail/edit page
+ * Company detail / edit page
  */
-import React, { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '../layouts/MainLayout';
-import { companyApi, userApi } from '../api';
+import { companyApi, contactApi, pipelineApi, userApi } from '../api';
 import {
   Company,
-  CompanyCreate,
-  CompanyUpdate,
-  CompanyHistoryEntry,
-  CompanyHistoryCreate,
   CompanyContactDetailCreate,
+  CompanyCreate,
+  CompanyHistoryEntry,
+  Contact,
+  Priority,
   RelationshipStatus,
   User,
 } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import './Contacts.css';
-import { fromServer, fmtDateTime, localNow, toInputLocal } from '../utils/dates';
+import { useConfirm, useToast } from '../contexts/UiContext';
+import { usePageTitle } from '../hooks/usePageTitle';
+import { fmtDateTime, fromServer, toInputLocal } from '../utils/dates';
+import { STAGE_META, STATUS_LABELS, WAITING_META, detailPath, formatDeal } from '../utils/pipeline';
+import { PriorityBadge, PriorityPicker } from '../components/PriorityBadge';
+import { PipelineFields } from '../components/PipelineFields';
+import { DateTimeInput } from '../components/DateTimeInput';
+import { FavoriteStar } from '../components/FavoriteStar';
+import { HistoryTimeline } from '../components/HistoryTimeline';
+import { LogInteractionModal } from '../components/LogInteractionModal';
+import { DetailRow, DetailsEditor } from '../components/DetailsEditor';
+import { FormSection } from '../components/FormSection';
+import { FollowUpBadge, InfoRow } from '../components/EntityBits';
+import { Alert, Avatar, PageLoading, Person, RowMenu, StatusBadge } from '../components/ui';
+import '../styles/detail.css';
 
-const ENTRY_TYPE_LABEL: Record<string, string> = {
-  created: 'Company created',
-  edited: 'Company edited',
-  interaction: 'Interaction logged',
-  marked_contacted: 'Marked as contacted',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  new: 'New',
-  contacted: 'Contacted',
-  'follow-up-needed': 'Follow-up needed',
-  interested: 'Interested',
-  'not-interested': 'Not interested',
-  customer: 'Customer',
-  inactive: 'Inactive',
-};
-
+const DETAIL_KINDS = [
+  { type: 'email', title: 'Emails', singular: 'email', placeholder: 'e.g. info@company.com', inputType: 'email' as const },
+  { type: 'phone', title: 'Phones', singular: 'phone', placeholder: 'e.g. +385 1 234 5678', inputType: 'tel' as const },
+  { type: 'website', title: 'Websites', singular: 'website', placeholder: 'e.g. https://example.com', inputType: 'url' as const },
+  { type: 'address', title: 'Addresses', singular: 'address', placeholder: 'e.g. Ilica 1, Zagreb', inputType: 'text' as const },
+];
 
 export const CompanyDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [searchParams] = useSearchParams();
+  const isNew = id === 'new';
 
   const [company, setCompany] = useState<Company | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [history, setHistory] = useState<CompanyHistoryEntry[]>([]);
+  const [people, setPeople] = useState<Contact[]>([]);
+  const [peopleTotal, setPeopleTotal] = useState(0);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  // Contact details editing state (separate from main formData)
-  type DetailRow = { _idx: number; type: CompanyContactDetailCreate['type']; value: string; label: string };
-  const [detailsForm, setDetailsForm] = useState<DetailRow[]>([]);
-  const [detailCounter, setDetailCounter] = useState(0);
-
-  // Log interaction form state
-  const [showLogForm, setShowLogForm] = useState(false);
-  const [logFormData, setLogFormData] = useState<CompanyHistoryCreate>({
-    status: RelationshipStatus.CONTACTED,
-    note: '',
-    interaction_at: localNow(),
-    next_contact_due_at: '',
-  });
-  const [logError, setLogError] = useState('');
-  const [logSaving, setLogSaving] = useState(false);
+  const [favorite, setFavorite] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
 
   const [formData, setFormData] = useState<CompanyCreate>({
     name: '',
@@ -72,42 +66,45 @@ export const CompanyDetailPage: React.FC = () => {
     notes: '',
     current_relationship_status: RelationshipStatus.NEW,
     reminders_enabled: true,
+    priority: null,
+    next_action: '',
+    deal_value: null,
+    deal_value_period: null,
+    deal_stage: null,
+    waiting_on: null,
     owner_user_id: user?.id,
     contact_details: [],
   });
+  const [rows, setRows] = useState<DetailRow[]>([]);
 
-  // Duplicate-detection state (create mode only)
-  const [nameSuggestions, setNameSuggestions] = useState<Company[]>([]);
+  // Duplicate detection (create mode only)
+  const [suggestions, setSuggestions] = useState<Company[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const nameSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
+  usePageTitle(isNew ? 'New company' : company?.name || 'Company');
 
-  useEffect(() => {
-    if (id && id !== 'new') {
-      loadCompany();
-      loadHistory();
-      if (searchParams.get('edit') === 'true') {
-        setEditing(true);
+  const handleNameChange = (value: string) => {
+    setFormData((prev) => ({ ...prev, name: value }));
+    if (!isNew) return;
+    if (nameTimer.current) clearTimeout(nameTimer.current);
+    if (value.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    nameTimer.current = setTimeout(async () => {
+      try {
+        const results = await companyApi.list({ search: value.trim(), limit: 5 });
+        setSuggestions(results.items);
+        setShowSuggestions(results.items.length > 0);
+      } catch {
+        // ignore search errors
       }
-    } else {
-      setEditing(true);
-      setLoading(false);
-    }
-  }, [id, searchParams]);
-
-  const loadUsers = async () => {
-    try {
-      const data = await userApi.list();
-      setUsers(data);
-    } catch (err: any) {
-      console.error('Failed to load users:', err);
-    }
+    }, 300);
   };
 
-  const loadCompany = async () => {
+  const loadCompany = useCallback(async () => {
     if (!id || id === 'new') return;
     try {
       const data = await companyApi.get(parseInt(id));
@@ -118,519 +115,410 @@ export const CompanyDetailPage: React.FC = () => {
         notes: data.notes || '',
         current_relationship_status: data.current_relationship_status,
         reminders_enabled: data.reminders_enabled,
-        next_contact_due_at: data.next_contact_due_at,
+        next_contact_due_at: data.next_contact_due_at ? toInputLocal(data.next_contact_due_at) : undefined,
+        priority: data.priority ?? null,
+        next_action: data.next_action || '',
+        deal_value: data.deal_value ?? null,
+        deal_value_period: data.deal_value_period ?? null,
+        deal_stage: data.deal_stage ?? null,
+        waiting_on: data.waiting_on ?? null,
         owner_user_id: data.owner_user_id,
         contact_details: [],
       });
-      let counter = 0;
-      setDetailsForm(
-        data.contact_details.map((d) => ({ _idx: counter++, type: d.type as CompanyContactDetailCreate['type'], value: d.value, label: d.label || '' }))
-      );
-      setDetailCounter(counter);
-      setLogFormData((prev: CompanyHistoryCreate) => ({ ...prev, status: data.current_relationship_status }));
+      setRows(data.contact_details.map((d, i) => ({ _idx: i, type: d.type, value: d.value, label: d.label || '' })));
+      pipelineApi.get('company', data.id).then((item) => setFavorite(item.is_favorite)).catch(() => undefined);
+      setError('');
     } catch (err: any) {
       setError(err.message || 'Failed to load company');
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     if (!id || id === 'new') return;
     try {
-      const data = await companyApi.getHistory(parseInt(id));
-      setHistory(data);
-    } catch (err: any) {
+      setHistory(await companyApi.getHistory(parseInt(id)));
+    } catch (err) {
       console.error('Failed to load history:', err);
+    }
+  }, [id]);
+
+  const loadPeople = useCallback(async () => {
+    if (!id || id === 'new') return;
+    try {
+      const res = await contactApi.list({ company_id: parseInt(id), limit: 8, sort_by: 'name' });
+      setPeople(res.items);
+      setPeopleTotal(res.total);
+    } catch (err) {
+      console.error('Failed to load contacts of company:', err);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    userApi.list().then(setUsers).catch((err) => console.error('Failed to load users:', err));
+  }, []);
+
+  useEffect(() => {
+    if (id && id !== 'new') {
+      setLoading(true);
+      loadCompany();
+      loadHistory();
+      loadPeople();
+      setEditing(searchParams.get('edit') === 'true');
+    } else {
+      setEditing(true);
+      setLoading(false);
+    }
+  }, [id, searchParams, loadCompany, loadHistory, loadPeople]);
+
+  const toggleFavorite = async (next: boolean) => {
+    if (!company) return;
+    setFavorite(next);
+    try {
+      await pipelineApi.setFavorite('company', company.id, next);
+      toast(next ? 'Added to favorites' : 'Removed from favorites');
+    } catch (err: any) {
+      setFavorite(!next);
+      toast(err.message || 'Failed to update favorites', 'error');
+    }
+  };
+
+  const handlePriorityChange = async (priority: Priority | null) => {
+    if (!company) return;
+    try {
+      await pipelineApi.update('company', company.id, { priority });
+      await Promise.all([loadCompany(), loadHistory()]);
+    } catch (err: any) {
+      toast(err.message || 'Failed to update priority', 'error');
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSaving(true);
     try {
-      const contact_details: CompanyContactDetailCreate[] = detailsForm
-        .filter((r: DetailRow) => r.value)
-        .map((r: DetailRow) => ({ type: r.type, value: r.value, label: r.label || undefined }));
-      const payload = { ...formData, contact_details };
-      if (id === 'new') {
-        await companyApi.create(payload);
-        navigate('/companies');
+      const contact_details: CompanyContactDetailCreate[] = rows
+        .filter((r) => r.value.trim())
+        .map((r) => ({ type: r.type as CompanyContactDetailCreate['type'], value: r.value.trim(), label: r.label || undefined }));
+      const payload = {
+        ...formData,
+        next_contact_due_at: formData.next_contact_due_at ? new Date(formData.next_contact_due_at).toISOString() : null,
+        contact_details,
+      };
+      if (isNew) {
+        const created = await companyApi.create(payload);
+        toast('Company created');
+        navigate(`/companies/${created.id}`);
       } else {
-        const updatePayload: CompanyUpdate = { ...payload };
-        await companyApi.update(parseInt(id!), updatePayload);
+        await companyApi.update(parseInt(id!), payload);
+        await Promise.all([loadCompany(), loadHistory()]); // refresh first so the view never flashes stale data
         setEditing(false);
-        await loadCompany();
-        await loadHistory();
+        toast('Changes saved');
       }
     } catch (err: any) {
       setError(err.message || 'Failed to save company');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this company?')) return;
+    const ok = await confirm({
+      title: 'Delete company?',
+      message: <>{company?.name} will be removed from your lists. Its history is kept.</>,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await companyApi.delete(parseInt(id!));
+      toast('Company deleted');
       navigate('/companies');
     } catch (err: any) {
-      setError(err.message || 'Failed to delete company');
+      toast(err.message || 'Failed to delete company', 'error');
     }
   };
 
-  const handleLogInteraction = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLogError('');
-    setLogSaving(true);
-    try {
-      await companyApi.addHistory(parseInt(id!), {
-        ...logFormData,
-        interaction_at: new Date(logFormData.interaction_at).toISOString(),
-        next_contact_due_at: logFormData.next_contact_due_at
-          ? new Date(logFormData.next_contact_due_at).toISOString()
-          : undefined,
-      });
-      setShowLogForm(false);
-      setLogFormData({
-        status: RelationshipStatus.CONTACTED,
-        note: '',
-        interaction_at: localNow(),
-        next_contact_due_at: '',
-      });
-      await loadCompany();
-      await loadHistory();
-    } catch (err: any) {
-      setLogError(err.message || 'Failed to log interaction');
-    } finally {
-      setLogSaving(false);
+  const cancelEdit = () => {
+    if (isNew) navigate('/companies');
+    else {
+      setEditing(false);
+      loadCompany();
     }
-  };
-
-  const handleNameChange = (value: string) => {
-    setFormData(prev => ({ ...prev, name: value }));
-    if (id !== 'new') return;
-    if (nameSearchTimer.current) clearTimeout(nameSearchTimer.current);
-    if (value.trim().length < 2) {
-      setNameSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    nameSearchTimer.current = setTimeout(async () => {
-      try {
-        const results = await companyApi.list({ search: value.trim(), limit: 5 });
-        setNameSuggestions(results.items);
-        setShowSuggestions(results.items.length > 0);
-      } catch {
-        // silently ignore search errors
-      }
-    }, 300);
-  };
-
-  const addDetailRow = (type: CompanyContactDetailCreate['type']) => {
-    const idx = detailCounter;
-    setDetailCounter((c: number) => c + 1);
-    setDetailsForm((prev: DetailRow[]) => [...prev, { _idx: idx, type, value: '', label: '' }]);
-  };
-
-  const removeDetailRow = (idx: number) => {
-    setDetailsForm((prev: DetailRow[]) => prev.filter((r: DetailRow) => r._idx !== idx));
-  };
-
-  const updateDetailRow = (idx: number, field: 'value' | 'label', val: string) => {
-    setDetailsForm((prev: DetailRow[]) => prev.map((r: DetailRow) => r._idx === idx ? { ...r, [field]: val } : r));
   };
 
   const canDelete = user?.role === 'admin' || (company && user?.id === company.owner_user_id);
-  const isNew = id === 'new';
 
   if (loading) {
     return (
       <MainLayout>
-        <div className="loading">Loading company...</div>
+        <PageLoading />
       </MainLayout>
     );
   }
 
+  if (!isNew && !company) {
+    return (
+      <MainLayout>
+        <div className="page page-narrow">
+          <Link to="/companies" className="back-link">← Companies</Link>
+          <Alert tone="error">{error || 'Company not found'}</Alert>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // ── edit / create form ─────────────────────────────────────────────
+  if (editing) {
+    return (
+      <MainLayout>
+        <div className="page page-narrow">
+          <Link to={isNew ? '/companies' : `/companies/${id}`} className="back-link">← {isNew ? 'Companies' : company?.name}</Link>
+          <div className="page-header">
+            <h1 className="page-title">{isNew ? 'New company' : 'Edit company'}</h1>
+          </div>
+
+          {error && <div style={{ marginBottom: '1rem' }}><Alert tone="error" onClose={() => setError('')}>{error}</Alert></div>}
+
+          <form id="company-form" onSubmit={handleSubmit} className="stack edit-form">
+            <FormSection title="Basic information">
+              <div className="form-grid">
+                <div className="field span-2" style={{ position: 'relative' }}>
+                  <label htmlFor="name">Name <span className="req">*</span></label>
+                  <input
+                    id="name"
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                    onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                    autoComplete="off"
+                    required
+                    autoFocus={isNew}
+                  />
+                  {isNew && showSuggestions && (
+                    <ul className="suggest">
+                      <li className="suggest-head">Already in your CRM – open instead of creating a duplicate:</li>
+                      {suggestions.map((c) => (
+                        <li key={c.id} className="suggest-item" onMouseDown={() => navigate(`/companies/${c.id}`)}>
+                          <span className="suggest-name">{c.name}</span>
+                          {c.industry && <span className="suggest-meta">{c.industry}</span>}
+                          <span className="suggest-action">Open →</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="field">
+                  <label htmlFor="industry">Industry</label>
+                  <input id="industry" type="text" value={formData.industry || ''} onChange={(e) => setFormData({ ...formData, industry: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label htmlFor="status">Relationship status</label>
+                  <select id="status" value={formData.current_relationship_status} onChange={(e) => setFormData({ ...formData, current_relationship_status: e.target.value as RelationshipStatus })}>
+                    {Object.values(RelationshipStatus).map((s) => (
+                      <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field span-2">
+                  <label htmlFor="owner_user_id">Relationship owner <span className="req">*</span></label>
+                  <select id="owner_user_id" value={formData.owner_user_id || ''} onChange={(e) => setFormData({ ...formData, owner_user_id: parseInt(e.target.value) })} required>
+                    <option value="">Select an owner…</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </FormSection>
+
+            <FormSection title="Contact details" description="E-mail, phone, website and address of the company.">
+              <DetailsEditor kinds={DETAIL_KINDS} rows={rows} onChange={setRows} />
+            </FormSection>
+
+            <FormSection title="Pipeline & deal" description="Rank this company to show it in the Pipeline, and track the deal.">
+              <PipelineFields values={formData} onChange={(patch) => setFormData({ ...formData, ...patch })} />
+              <div className="field">
+                <label htmlFor="next_contact_due_at">Next follow-up</label>
+                <DateTimeInput
+                  id="next_contact_due_at"
+                  value={formData.next_contact_due_at ?? ''}
+                  onChange={(v) => setFormData({ ...formData, next_contact_due_at: v || undefined })}
+                />
+              </div>
+            </FormSection>
+
+            <FormSection title="Notes & reminders">
+              <div className="field">
+                <label htmlFor="notes">Notes</label>
+                <textarea id="notes" value={formData.notes || ''} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} rows={5} />
+              </div>
+              <label className="check">
+                <input type="checkbox" checked={formData.reminders_enabled ?? true} onChange={(e) => setFormData({ ...formData, reminders_enabled: e.target.checked })} />
+                Send me e-mail reminders when a follow-up is due
+              </label>
+            </FormSection>
+          </form>
+
+          <div className="savebar">
+            <div className="savebar-inner">
+              <button type="button" className="btn" onClick={cancelEdit} disabled={saving}>Cancel</button>
+              <button type="submit" form="company-form" className="btn btn-primary" disabled={saving}>
+                {saving ? <><span className="spinner" /> Saving…</> : isNew ? 'Create company' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // ── read-only view ─────────────────────────────────────────────────
+  const c = company!;
+  const values = (type: string) => c.contact_details.filter((d) => d.type === type);
+  const stage = c.deal_stage ? STAGE_META[c.deal_stage] : null;
+  const waiting = c.waiting_on ? WAITING_META[c.waiting_on] : null;
+
   return (
     <MainLayout>
-      <div className="contact-detail">
-        <div className="page-header">
-          <h1>{isNew ? 'New Company' : editing ? 'Edit Company' : 'Company Details'}</h1>
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            {editing ? (
-              <>
-                <button type="submit" form="company-form" className="btn-primary-inline">
-                  {isNew ? 'Create Company' : 'Save Changes'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => (isNew ? navigate('/companies') : setEditing(false))}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                {!isNew && canDelete && (
-                  <button type="button" onClick={handleDelete} className="btn-danger">
-                    Delete
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                <Link to="/companies" className="btn-secondary">Back to Companies</Link>
-                <button onClick={() => setEditing(true)} className="btn-primary-inline">Edit</button>
-              </>
-            )}
+      <div className="page">
+        <Link to="/companies" className="back-link">← Companies</Link>
+
+        <div className="detail-head">
+          <div className="detail-id">
+            <Avatar name={c.name} size="xl" />
+            <div>
+              <div className="detail-title">
+                <h1>{c.name}</h1>
+                <FavoriteStar value={favorite} onToggle={toggleFavorite} />
+              </div>
+              <div className="detail-sub">{c.industry || <span className="faint">No industry</span>}</div>
+              <div className="detail-badges">
+                <StatusBadge status={c.current_relationship_status} />
+                <PriorityPicker value={c.priority} onChange={handlePriorityChange} size="sm" />
+                {stage && <span className="pl-stage" style={{ color: stage.color, background: stage.bg }}>{stage.label}</span>}
+                {waiting && <span className="pl-waiting" style={{ color: waiting.color, background: waiting.bg }}>{waiting.label}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="page-actions">
+            <button type="button" className="btn btn-primary btn-lg" onClick={() => setLogOpen(true)}>+ Log interaction</button>
+            <button type="button" className="btn btn-lg" onClick={() => setEditing(true)}>Edit</button>
+            <RowMenu actions={[{ label: 'Delete company', danger: true, onClick: handleDelete, hidden: !canDelete }]} />
           </div>
         </div>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && <div style={{ marginBottom: '1rem' }}><Alert tone="error" onClose={() => setError('')}>{error}</Alert></div>}
 
-        {editing ? (
-          <form id="company-form" onSubmit={handleSubmit} className="contact-form">
-            <div className="form-row">
-              <div className="form-group" style={{ position: 'relative' }}>
-                <label htmlFor="name">Name *</label>
-                <input
-                  id="name"
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => handleNameChange(e.target.value)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                  onFocus={() => nameSuggestions.length > 0 && setShowSuggestions(true)}
-                  autoComplete="off"
-                  required
-                />
-                {isNew && showSuggestions && (
-                  <ul className="name-suggestions">
-                    <li className="name-suggestions-header">Existing companies — select to open instead of creating a duplicate:</li>
-                    {nameSuggestions.map((c) => (
-                      <li key={c.id} className="name-suggestions-item" onMouseDown={() => navigate(`/companies/${c.id}`)}>
-                        <span className="name-suggestions-name">{c.name}</span>
-                        {c.industry && <span className="name-suggestions-meta">{c.industry}</span>}
-                        <span className="name-suggestions-action">→ Open</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="form-group">
-                <label htmlFor="owner_user_id">Relationship Owner *</label>
-                <select
-                  id="owner_user_id"
-                  value={formData.owner_user_id || ''}
-                  onChange={(e) => setFormData({ ...formData, owner_user_id: parseInt(e.target.value) })}
-                  required
-                >
-                  <option value="">Select relationship owner...</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name} ({u.email})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="industry">Industry</label>
-                <input
-                  id="industry"
-                  type="text"
-                  value={formData.industry || ''}
-                  onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="status">Relationship Status</label>
-                <select
-                  id="status"
-                  value={formData.current_relationship_status}
-                  onChange={(e) =>
-                    setFormData({ ...formData, current_relationship_status: e.target.value as RelationshipStatus })
-                  }
-                >
-                  {Object.values(RelationshipStatus).map((s) => (
-                    <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="next_contact_due_at">Next Follow-up Date</label>
-              <input
-                id="next_contact_due_at"
-                type="datetime-local"
-                value={
-                  formData.next_contact_due_at
-                    ? toInputLocal(formData.next_contact_due_at)
-                    : ''
-                }
-                onChange={(e) => setFormData({ ...formData, next_contact_due_at: e.target.value })}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="notes">Notes</label>
-              <textarea
-                id="notes"
-                value={formData.notes || ''}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows={5}
-              />
-            </div>
-
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={formData.reminders_enabled ?? true}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, reminders_enabled: e.target.checked })}
-              />
-              Enable reminders for this company
-            </label>
-
-            {(['email', 'phone', 'website', 'address'] as const).map((type) => {
-              const rows = detailsForm.filter((r: DetailRow) => r.type === type);
-              const inputType = type === 'email' ? 'email' : type === 'website' ? 'url' : 'text';
-              const label = type.charAt(0).toUpperCase() + type.slice(1) + 's';
-              const placeholder = type === 'email' ? 'e.g. info@company.com'
-                : type === 'phone' ? 'e.g. +386 1 234 5678'
-                : type === 'website' ? 'e.g. https://example.com'
-                : 'e.g. 123 Main St, Ljubljana';
-              return (
-                <div key={type} style={{ marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <label style={{ fontWeight: 600, fontSize: '0.875rem', color: '#2c3e50' }}>{label}</label>
-                    <button type="button" onClick={() => addDetailRow(type)} className="btn-primary-inline" style={{ padding: '0.35rem 0.75rem', fontSize: '0.875rem' }}>
-                      + Add {type}
-                    </button>
-                  </div>
-                  {rows.length === 0 && <p style={{ color: '#888', fontSize: '0.875rem', margin: 0 }}>No {type}s added yet.</p>}
-                  {rows.map((detail: DetailRow) => (
-                    <div key={detail._idx} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', marginBottom: '0.5rem' }}>
-                      <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                        <input type={inputType} value={detail.value} placeholder={placeholder}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateDetailRow(detail._idx, 'value', e.target.value)} />
-                      </div>
-                      <div className="form-group" style={{ flex: '0 0 160px', marginBottom: 0 }}>
-                        <input type="text" value={detail.label} placeholder="Label (optional)"
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateDetailRow(detail._idx, 'label', e.target.value)} />
-                      </div>
-                      <button type="button" onClick={() => removeDetailRow(detail._idx)}
-                        className="btn-remove" style={{ alignSelf: 'center', marginBottom: 0 }}>×</button>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </form>
-        ) : (
-          <div className="detail-layout">
-            {/* Timeline — left/main column */}
-            <div className="detail-main">
-              <div className="timeline-section">
-                <div className="timeline-section-header">
-                  <h2>Activity Timeline</h2>
-                  <button
-                    className="btn-primary-inline"
-                    onClick={() => {
-                      setLogFormData({
-                        status: company?.current_relationship_status ?? RelationshipStatus.CONTACTED,
-                        note: '',
-                        interaction_at: localNow(),
-                        next_contact_due_at: '',
-                      });
-                      setLogError('');
-                      setShowLogForm((v: boolean) => !v);
-                    }}
-                  >
-                    {showLogForm ? 'Cancel' : '+ Log Interaction'}
-                  </button>
-                </div>
-
-                {showLogForm && (
-                  <form className="log-interaction-form" onSubmit={handleLogInteraction}>
-                    {logError && <div className="error-message">{logError}</div>}
-
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label htmlFor="log_status">Status after interaction</label>
-                        <select
-                          id="log_status"
-                          value={logFormData.status}
-                          onChange={(e) =>
-                            setLogFormData({ ...logFormData, status: e.target.value as RelationshipStatus })
-                          }
-                        >
-                          {Object.values(RelationshipStatus).map((s) => (
-                            <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label htmlFor="log_date">Interaction date</label>
-                        <input
-                          id="log_date"
-                          type="datetime-local"
-                          value={logFormData.interaction_at}
-                          onChange={(e) => setLogFormData({ ...logFormData, interaction_at: e.target.value })}
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="form-group">
-                      <label htmlFor="log_followup">Next follow-up date (optional — updates the company)</label>
-                      <input
-                        id="log_followup"
-                        type="datetime-local"
-                        value={logFormData.next_contact_due_at ?? ''}
-                        onChange={(e) => setLogFormData({ ...logFormData, next_contact_due_at: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label htmlFor="log_note">Note</label>
-                      <textarea
-                        id="log_note"
-                        value={logFormData.note ?? ''}
-                        onChange={(e) => setLogFormData({ ...logFormData, note: e.target.value })}
-                        placeholder="What happened? e.g. Had a call, sent proposal, met at conference..."
-                        rows={3}
-                      />
-                    </div>
-
-                    <div className="form-actions">
-                      <button type="submit" className="btn-primary-inline" disabled={logSaving}>
-                        {logSaving ? 'Saving...' : 'Save Interaction'}
-                      </button>
-                    </div>
-                  </form>
-                )}
-
-                {history.length === 0 ? (
-                  <p className="empty-message">No activity yet.</p>
-                ) : (
-                  <div className="timeline">
-                    {history.map((entry) => {
-                      const recordedAt = fromServer(entry.created_at);
-                      const happenedAt = fromServer(entry.interaction_at);
-                      const showHappenedOn =
-                        entry.entry_type === 'interaction' &&
-                        recordedAt.getTime() - happenedAt.getTime() > 5 * 60 * 1000;
-
-                      return (
-                        <div key={entry.id} className={`timeline-item entry-${entry.entry_type}`}>
-                          <div className="timeline-header">
-                            <span className="timeline-type">{ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}</span>
-                            <span className="timeline-separator">·</span>
-                            <span className="timeline-date">{fmtDateTime(recordedAt)}</span>
-                            <span className="timeline-separator">·</span>
-                            <span className="timeline-by">by {entry.changed_by_full_name}</span>
-                          </div>
-
-                          <span className="timeline-status">
-                            {STATUS_LABELS[entry.status] ?? entry.status}
-                          </span>
-
-                          {showHappenedOn && (
-                            <p className="timeline-happened-on">
-                              Happened on: {fmtDateTime(happenedAt)}
-                            </p>
-                          )}
-
-                          {entry.note && (
-                            <p className="timeline-note">{entry.note}</p>
-                          )}
-
-                          {entry.next_contact_due_at && (
-                            <p className="timeline-followup">
-                              Next follow-up: {fmtDateTime(fromServer(entry.next_contact_due_at))}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Info panel — right/sidebar column */}
-            <div className="detail-sidebar">
-              <div className="contact-info">
-                <h2>Company Information</h2>
-                <div className="info-grid">
-                  <div className="info-item">
-                    <label>Name</label>
-                    <span>{company?.name}</span>
-                  </div>
-                  <div className="info-item">
-                    <label>Industry</label>
-                    <span>{company?.industry || '-'}</span>
-                  </div>
-                  <div className="info-item">
-                    <label>Relationship Owner</label>
-                    <span className="owner-info" title={company?.owner_email}>
-                      {company?.owner_full_name}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <label>Created By</label>
-                    <span className="owner-info" title={company?.created_by_email}>
-                      {company?.created_by_full_name}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <label>Status</label>
-                    <span className="status-badge">
-                      {STATUS_LABELS[company?.current_relationship_status ?? ''] ?? company?.current_relationship_status}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <label>Next Follow-up</label>
-                    <span>
-                      {company?.next_contact_due_at
-                        ? fmtDateTime(fromServer(company.next_contact_due_at))
-                        : '-'}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <label>Reminders</label>
-                    <span>{company?.reminders_enabled ? 'Enabled' : 'Disabled'}</span>
-                  </div>
-
-                  {(['email', 'phone', 'website', 'address'] as const).map((type) => {
-                    const items = company?.contact_details.filter((d) => d.type === type) ?? [];
-                    if (items.length === 0) return null;
-                    return (
-                      <div className="info-item" key={type}>
-                        <label>{type.charAt(0).toUpperCase() + type.slice(1)}s</label>
-                        <div className="detail-chips">
-                          {items.map((d) => (
-                            <span className="detail-chip" key={d.id} title={d.label || undefined}>
-                              {d.value}{d.label ? <em> ({d.label})</em> : null}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {company?.notes && (
-                  <div className="sidebar-notes">
-                    <h2>Notes</h2>
-                    <p className="notes-content">{company.notes}</p>
-                  </div>
-                )}
-              </div>
-            </div>
+        <div className="detail-grid">
+          <div className="stack">
+            <section className="card">
+              <div className="card-head"><h2>Activity</h2><span className="muted">{history.length} {history.length === 1 ? 'entry' : 'entries'}</span></div>
+              <div className="card-body"><HistoryTimeline entries={history} /></div>
+            </section>
           </div>
-        )}
+
+          <aside className="stack">
+            <section className="card">
+              <div className="card-head"><h3>Pipeline</h3></div>
+              <dl className="info-list">
+                <InfoRow label="Next action">{c.next_action || <span className="faint">Not set</span>}</InfoRow>
+                <InfoRow label="Follow-up">
+                  <FollowUpBadge value={c.next_contact_due_at} emptyLabel="Not scheduled" />
+                  {c.next_contact_due_at && <div className="info-sub">{fmtDateTime(fromServer(c.next_contact_due_at))}</div>}
+                </InfoRow>
+                <InfoRow label="Deal value">{c.deal_value !== null && c.deal_value !== undefined ? <strong>{formatDeal(c.deal_value, c.deal_value_period)}</strong> : <span className="faint">Not set</span>}</InfoRow>
+                <InfoRow label="Last contact">{c.last_contacted_at ? fmtDateTime(fromServer(c.last_contacted_at)) : <span className="faint">Never</span>}</InfoRow>
+              </dl>
+            </section>
+
+            <section className="card">
+              <div className="card-head">
+                <h3>People {peopleTotal > 0 && <span className="muted">({peopleTotal})</span>}</h3>
+                <Link to={`/contacts/new?company_id=${c.id}`} className="btn btn-sm">+ Add</Link>
+              </div>
+              {people.length === 0 ? (
+                <p className="card-body muted">No contacts at this company yet.</p>
+              ) : (
+                <ul className="people-list">
+                  {people.map((p) => (
+                    <li key={p.id}>
+                      <Link to={detailPath('contact', p.id)} className="people-item">
+                        <Avatar name={`${p.first_name} ${p.last_name}`} size="sm" />
+                        <span className="people-name">
+                          {p.first_name} {p.last_name}
+                          {p.job_title && <span className="cell-sub">{p.job_title}</span>}
+                        </span>
+                        {p.priority && <PriorityBadge value={p.priority} size="sm" />}
+                      </Link>
+                    </li>
+                  ))}
+                  {peopleTotal > people.length && (
+                    <li><Link to={`/contacts?search=${encodeURIComponent(c.name)}`} className="people-more">View all {peopleTotal} →</Link></li>
+                  )}
+                </ul>
+              )}
+            </section>
+
+            <section className="card">
+              <div className="card-head"><h3>Details</h3></div>
+              <dl className="info-list">
+                <InfoRow label="Owner"><Person name={c.owner_full_name} title={c.owner_email} /></InfoRow>
+                <InfoRow label="Created by"><Person name={c.created_by_full_name} title={c.created_by_email} /></InfoRow>
+                {DETAIL_KINDS.map((kind) => {
+                  const items = values(kind.type);
+                  if (items.length === 0) return null;
+                  return (
+                    <InfoRow key={kind.type} label={kind.title}>
+                      <div className="chip-list">
+                        {items.map((d) => {
+                          const href = kind.type === 'email' ? `mailto:${d.value}` : kind.type === 'phone' ? `tel:${d.value}` : kind.type === 'website' ? (d.value.startsWith('http') ? d.value : `https://${d.value}`) : undefined;
+                          return href ? (
+                            <a key={d.id} href={href} className="detail-chip" target={kind.type === 'website' ? '_blank' : undefined} rel="noreferrer" title={d.label || undefined}>
+                              {d.value}{d.label ? <em> ({d.label})</em> : null}
+                            </a>
+                          ) : (
+                            <span key={d.id} className="detail-chip" title={d.label || undefined}>{d.value}{d.label ? <em> ({d.label})</em> : null}</span>
+                          );
+                        })}
+                      </div>
+                    </InfoRow>
+                  );
+                })}
+                <InfoRow label="Reminders">{c.reminders_enabled ? <span className="badge badge-ok">Enabled</span> : <span className="badge">Off</span>}</InfoRow>
+              </dl>
+            </section>
+
+            {c.notes && (
+              <section className="card">
+                <div className="card-head"><h3>Notes</h3></div>
+                <div className="card-body notes-text">{c.notes}</div>
+              </section>
+            )}
+          </aside>
+        </div>
       </div>
+
+      {logOpen && (
+        <LogInteractionModal
+          type="company"
+          id={c.id}
+          name={c.name}
+          currentStatus={c.current_relationship_status}
+          onClose={() => setLogOpen(false)}
+          onSaved={async () => {
+            setLogOpen(false);
+            toast('Interaction logged');
+            await Promise.all([loadCompany(), loadHistory()]);
+          }}
+        />
+      )}
     </MainLayout>
   );
 };

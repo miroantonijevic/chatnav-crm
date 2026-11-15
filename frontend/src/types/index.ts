@@ -17,6 +17,35 @@ export enum RelationshipStatus {
   INACTIVE = 'inactive',
 }
 
+export enum Priority {
+  HOT = 'hot',
+  WARM = 'warm',
+  COLD = 'cold',
+}
+
+export enum DealStage {
+  LEAD = 'lead',
+  DEMO = 'demo',
+  TRIAL = 'trial',
+  PROPOSAL = 'proposal',
+  NEGOTIATION = 'negotiation',
+  WON = 'won',
+  LOST = 'lost',
+}
+
+export type WaitingOn = 'client' | 'us';
+export type DealPeriod = 'monthly' | 'yearly' | 'one_time';
+
+/** Pipeline / deal fields shared by contacts and companies. */
+export interface DealFields {
+  priority?: Priority | null;
+  next_action?: string | null;
+  deal_value?: number | null; // EUR
+  deal_value_period?: DealPeriod | null;
+  deal_stage?: DealStage | null;
+  waiting_on?: WaitingOn | null;
+}
+
 export interface User {
   id: number;
   email: string;
@@ -77,6 +106,12 @@ export interface Contact {
   last_contacted_at?: string;
   next_contact_due_at?: string;
   reminders_enabled: boolean;
+  priority?: Priority | null;
+  next_action?: string | null;
+  deal_value?: number | null;
+  deal_value_period?: DealPeriod | null;
+  deal_stage?: DealStage | null;
+  waiting_on?: WaitingOn | null;
   contact_details: ContactContactDetail[];
   created_at: string;
   updated_at: string;
@@ -92,9 +127,15 @@ export interface ContactCreate {
   notes?: string;
   owner_user_id?: number;
   current_relationship_status?: RelationshipStatus;
-  last_contacted_at?: string;
-  next_contact_due_at?: string;
+  last_contacted_at?: string | null;
+  next_contact_due_at?: string | null;
   reminders_enabled?: boolean;
+  priority?: Priority | null;
+  next_action?: string | null;
+  deal_value?: number | null;
+  deal_value_period?: DealPeriod | null;
+  deal_stage?: DealStage | null;
+  waiting_on?: WaitingOn | null;
   contact_details?: ContactContactDetailCreate[];
 }
 
@@ -105,7 +146,7 @@ export interface HistoryEntry {
   contact_id: number;
   changed_by_user_id: number;
   changed_by_full_name: string;
-  entry_type: 'created' | 'edited' | 'interaction';
+  entry_type: 'created' | 'edited' | 'interaction' | 'marked_contacted';
   status: RelationshipStatus;
   note?: string;
   interaction_at: string;
@@ -143,6 +184,11 @@ export interface ReminderStats {
   companies_upcoming_7_days: number;
   reminders_enabled: boolean;
   check_interval_minutes: number;
+  last_run_at?: string | null;
+  last_run_sent?: number;
+  last_run_simulated?: number;
+  last_run_failed?: number;
+  last_run_errors?: string[];
 }
 
 export interface EntityStats {
@@ -207,6 +253,12 @@ export interface Company {
   last_contacted_at?: string;
   next_contact_due_at?: string;
   reminders_enabled: boolean;
+  priority?: Priority | null;
+  next_action?: string | null;
+  deal_value?: number | null;
+  deal_value_period?: DealPeriod | null;
+  deal_stage?: DealStage | null;
+  waiting_on?: WaitingOn | null;
   contact_details: CompanyContactDetail[];
   created_at: string;
   updated_at: string;
@@ -224,7 +276,13 @@ export interface CompanyCreate {
   owner_user_id?: number;
   current_relationship_status?: RelationshipStatus;
   reminders_enabled?: boolean;
-  next_contact_due_at?: string;
+  next_contact_due_at?: string | null;
+  priority?: Priority | null;
+  next_action?: string | null;
+  deal_value?: number | null;
+  deal_value_period?: DealPeriod | null;
+  deal_stage?: DealStage | null;
+  waiting_on?: WaitingOn | null;
   contact_details: CompanyContactDetailCreate[];
 }
 
@@ -235,7 +293,13 @@ export interface CompanyUpdate {
   owner_user_id?: number;
   current_relationship_status?: RelationshipStatus;
   reminders_enabled?: boolean;
-  next_contact_due_at?: string;
+  next_contact_due_at?: string | null;
+  priority?: Priority | null;
+  next_action?: string | null;
+  deal_value?: number | null;
+  deal_value_period?: DealPeriod | null;
+  deal_stage?: DealStage | null;
+  waiting_on?: WaitingOn | null;
   contact_details?: CompanyContactDetailCreate[];
 }
 
@@ -244,7 +308,7 @@ export interface CompanyHistoryEntry {
   company_id: number;
   changed_by_user_id: number;
   changed_by_full_name: string;
-  entry_type: 'created' | 'edited' | 'interaction';
+  entry_type: 'created' | 'edited' | 'interaction' | 'marked_contacted';
   status: RelationshipStatus;
   note?: string;
   interaction_at: string;
@@ -260,3 +324,74 @@ export interface CompanyHistoryCreate {
 }
 
 export type CompanyListResponse = PaginatedResponse<Company>;
+
+// ── Pipeline ("hot list") ─────────────────────────────────────────────
+
+export type EntityType = 'company' | 'contact';
+
+export interface PipelineItem {
+  entity_type: EntityType;
+  id: number;
+  name: string;
+  company_id?: number | null;
+  company_name?: string | null;
+  job_title?: string | null;
+  industry?: string | null;
+  priority?: Priority | null;
+  next_action?: string | null;
+  deal_value?: number | null;
+  deal_value_period?: DealPeriod | null;
+  deal_stage?: DealStage | null;
+  waiting_on?: WaitingOn | null;
+  is_favorite: boolean;
+  status: RelationshipStatus;
+  last_contacted_at?: string | null;
+  next_contact_due_at?: string | null;
+  reminders_enabled: boolean;
+  owner_user_id: number;
+  owner_full_name: string;
+  emails: string[];
+  phones: string[];
+  updated_at: string;
+}
+
+export interface PipelineListResponse {
+  items: PipelineItem[];
+  total: number;
+}
+
+export interface PipelineSummary {
+  total: number;
+  hot: number;
+  warm: number;
+  cold: number;
+  overdue: number;
+  companies: number;
+  contacts: number;
+  favorites: number;
+  mrr: number;
+  hot_mrr: number;
+  warm_mrr: number;
+  cold_mrr: number;
+  one_time: number;
+}
+
+export interface PipelineUpdate extends DealFields {
+  next_contact_due_at?: string | null;
+}
+
+export interface PipelineQuery {
+  skip?: number;
+  limit?: number;
+  search?: string;
+  entity_type?: EntityType;
+  priority?: Priority[];
+  status?: string;
+  owner_id?: number;
+  due?: 'overdue' | 'week' | 'none';
+  stage?: DealStage;
+  waiting_on?: WaitingOn;
+  favorites?: boolean;
+  sort_by?: string;
+  sort_order?: 'asc' | 'desc';
+}

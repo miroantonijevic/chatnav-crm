@@ -1,351 +1,230 @@
 /**
  * Contacts list page
  */
-import React, { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { MainLayout } from '../layouts/MainLayout';
-import { fromServer, fmtDate } from '../utils/dates';
 import { contactApi } from '../api';
-import { Contact, RelationshipStatus, EntityStats } from '../types';
+import { Contact, EntityStats, RelationshipStatus } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm, useToast } from '../contexts/UiContext';
+import { useListParams } from '../hooks/useListParams';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { useScrollRestoration } from '../utils/useScrollRestoration';
-import './Contacts.css';
-
-const PAGE_SIZE = 50;
-
-const STATUS_LABELS: Record<string, string> = {
-  new: 'New',
-  contacted: 'Contacted',
-  'follow-up-needed': 'Follow-up Needed',
-  interested: 'Interested',
-  'not-interested': 'Not Interested',
-  customer: 'Customer',
-  inactive: 'Inactive',
-};
+import { fromServer, fmtDate } from '../utils/dates';
+import { STATUS_LABELS, detailPath } from '../utils/pipeline';
+import { PriorityBadge } from '../components/PriorityBadge';
+import { Pagination } from '../components/Pagination';
+import { ContactLinks, FollowUpBadge } from '../components/EntityBits';
+import { Alert, EmptyState, Person, RowMenu, SearchBox, StatusBadge, TableSkeleton } from '../components/ui';
+import '../styles/lists.css';
 
 export const ContactsListPage: React.FC = () => {
+  usePageTitle('Contacts');
+  const { user } = useAuth();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const list = useListParams();
+  const { params, setParam, search, page, pageSize, sortBy, sortOrder } = list;
+
+  const status = (Object.values(RelationshipStatus) as string[]).includes(params.get('status') ?? '') ? params.get('status')! : '';
+  const dueOnly = params.get('due_only') === 'true';
+
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<EntityStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const reqRef = useRef(0);
   useScrollRestoration('scroll:contacts', !loading);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { user } = useAuth();
 
-  const search = searchParams.get('search') || '';
-  const status = searchParams.get('status') || '';
-  const dueOnly = searchParams.get('due_only') === 'true';
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
-  const sortBy = searchParams.get('sort_by') || '';
-  const sortOrder = searchParams.get('sort_order') === 'desc' ? 'desc' : 'asc';
-
-  useEffect(() => {
-    loadContacts();
-  }, [search, status, dueOnly, page, sortBy, sortOrder]);
-
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  // Reset to page 1 whenever filters or sorting change
-  useEffect(() => {
-    if (page !== 1) {
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete('page');
-      setSearchParams(newParams);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, dueOnly, sortBy, sortOrder]);
-
-  const loadContacts = async () => {
-    setLoading(true);
+  const load = useCallback(async () => {
+    const id = ++reqRef.current;
+    setRefreshing(true);
     try {
       const data = await contactApi.list({
         search: search || undefined,
         status: status || undefined,
         due_only: dueOnly,
-        skip: (page - 1) * PAGE_SIZE,
-        limit: PAGE_SIZE,
+        skip: (page - 1) * pageSize,
+        limit: pageSize,
         sort_by: sortBy || undefined,
         sort_order: sortOrder,
       });
+      if (id !== reqRef.current) return;
       setContacts(data.items);
       setTotal(data.total);
-    } catch (error) {
-      console.error('Failed to load contacts:', error);
+      setError('');
+      if (data.items.length === 0 && data.total > 0 && page > 1) setParam({ page: String(Math.ceil(data.total / pageSize)) }, true);
+    } catch (err: any) {
+      if (id === reqRef.current) setError(err.message || 'Failed to load contacts');
     } finally {
-      setLoading(false);
+      if (id === reqRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  };
+  }, [search, status, dueOnly, page, pageSize, sortBy, sortOrder, setParam]);
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
-      const data = await contactApi.getStats();
-      setStats(data);
-    } catch (error) {
-      console.error('Failed to load contact stats:', error);
+      setStats(await contactApi.getStats());
+    } catch (err) {
+      console.error('Failed to load contact stats:', err);
     }
-  };
+  }, []);
 
-  const handleSort = (column: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (sortBy === column) {
-      newParams.set('sort_order', sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      newParams.set('sort_by', column);
-      newParams.set('sort_order', 'asc');
-    }
-    setSearchParams(newParams);
-  };
+  useEffect(() => {
+    load();
+  }, [load]);
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
-  const sortArrow = (column: string) => (sortBy === column ? (sortOrder === 'asc' ? ' \u25b2' : ' \u25bc') : '');
+  const hasFilters = Boolean(search || status || dueOnly);
+  const canDelete = (c: Contact) => user?.role === 'admin' || c.owner_user_id === user?.id;
 
-  const handleSearchChange = (value: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (value) {
-      newParams.set('search', value);
-    } else {
-      newParams.delete('search');
-    }
-    setSearchParams(newParams);
-  };
-
-  const handleStatusChange = (value: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (value) {
-      newParams.set('status', value);
-    } else {
-      newParams.delete('status');
-    }
-    setSearchParams(newParams);
-  };
-
-  const handleDueOnlyChange = (checked: boolean) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (checked) {
-      newParams.set('due_only', 'true');
-    } else {
-      newParams.delete('due_only');
-    }
-    setSearchParams(newParams);
-  };
-
-  const hasActiveFilters = Boolean(search || status || dueOnly);
-
-  const handleClearFilters = () => {
-    const newParams = new URLSearchParams(searchParams);
-    newParams.delete('search');
-    newParams.delete('status');
-    newParams.delete('due_only');
-    newParams.delete('page');
-    setSearchParams(newParams);
-  };
-
-  const goToPage = (newPage: number) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (newPage > 1) {
-      newParams.set('page', newPage.toString());
-    } else {
-      newParams.delete('page');
-    }
-    setSearchParams(newParams);
-  };
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  const handleDelete = async (contact: Contact) => {
-    if (!confirm(`Are you sure you want to delete ${contact.first_name} ${contact.last_name}?`)) return;
-
+  const handleDelete = async (c: Contact) => {
+    const ok = await confirm({
+      title: 'Delete contact?',
+      message: <>{c.first_name} {c.last_name} will be removed from your lists. Their history is kept.</>,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
-      await contactApi.delete(contact.id);
-      // Reload contacts after deletion
-      loadContacts();
+      await contactApi.delete(c.id);
+      toast(`${c.first_name} ${c.last_name} deleted`);
+      load();
       loadStats();
-    } catch (error: any) {
-      alert(error.message || 'Failed to delete contact');
+    } catch (err: any) {
+      toast(err.message || 'Failed to delete contact', 'error');
     }
   };
 
-  const canDelete = (contact: Contact) => {
-    return user?.role === 'admin' || contact.owner_user_id === user?.id;
-  };
+  const Th: React.FC<{ k: string; children: React.ReactNode }> = ({ k, children }) => (
+    <th className="sortable" aria-sort={list.ariaSort(k)} onClick={() => list.toggleSort(k)}>
+      {children}{list.sortIndicator(k)}
+    </th>
+  );
 
   return (
     <MainLayout>
-      <div className="contacts-page">
+      <div className="page">
         <div className="page-header">
-          <h1>Contacts</h1>
-          <Link to="/contacts/new" className="btn-primary-inline">
-            + New Contact
-          </Link>
+          <div>
+            <h1 className="page-title">Contacts</h1>
+            <p className="page-sub">{stats ? `${stats.total} people you are in touch with` : 'People you are in touch with'}</p>
+          </div>
+          <div className="page-actions">
+            <Link to="/contacts/new" className="btn btn-primary btn-lg">+ New contact</Link>
+          </div>
         </div>
 
         {stats && (
-          <div className="stats-bar">
-            <span className="stats-bar-item stats-bar-total">
-              <strong>{stats.total}</strong> Total
-            </span>
-            <span className="stats-bar-item stats-bar-due">
-              <strong>{stats.due_now}</strong> Due Now
-            </span>
+          <div className="stat-row" role="group" aria-label="Filter by status">
+            <button type="button" className={`stat-pill${!status && !dueOnly ? ' active' : ''}`} onClick={() => setParam({ status: null, due_only: null })}>
+              <strong>{stats.total}</strong> All
+            </button>
+            <button type="button" className={`stat-pill is-warn${dueOnly ? ' active' : ''}`} onClick={() => setParam({ due_only: dueOnly ? null : 'true' })}>
+              <strong>{stats.due_now}</strong> Needs follow-up
+            </button>
             {Object.values(RelationshipStatus).map((s) => (
-              <span key={s} className="stats-bar-item">
+              <button key={s} type="button" className={`stat-pill${status === s ? ' active' : ''}`} onClick={() => setParam({ status: status === s ? null : s })}>
                 <strong>{stats.by_status[s] ?? 0}</strong> {STATUS_LABELS[s] ?? s}
-              </span>
+              </button>
             ))}
           </div>
         )}
 
         <div className="filters">
-          <input
-            type="text"
-            placeholder="Search contacts..."
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="search-input"
-          />
-
-          <select
-            value={status}
-            onChange={(e) => handleStatusChange(e.target.value)}
-            className="filter-select"
-          >
-            <option value="">All Statuses</option>
-            {Object.values(RelationshipStatus).map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={dueOnly}
-              onChange={(e) => handleDueOnlyChange(e.target.checked)}
-            />
-            Needs Follow-up Now
-          </label>
-
-          {hasActiveFilters && (
-            <button type="button" className="btn-clear-filters" onClick={handleClearFilters}>
-              Clear filters
-            </button>
-          )}
+          <SearchBox value={list.searchText} onChange={list.setSearchText} placeholder="Search name, company, owner, e-mail, notes…" label="Search contacts" />
+          {hasFilters && <button type="button" className="link-btn" onClick={list.clearFilters}>Clear filters</button>}
         </div>
 
-        {loading ? (
-          <div className="loading">Loading contacts...</div>
-        ) : contacts.length === 0 ? (
-          <div className="empty-message">
-            <p>No contacts found.</p>
-            <Link to="/contacts/new">Create your first contact</Link>
-          </div>
-        ) : (
-          <div className="contacts-table">
-            <table>
-              <thead>
-                <tr>
-                  <th className="sortable-header" onClick={() => handleSort('name')}>Name{sortArrow('name')}</th>
-                  <th className="sortable-header" onClick={() => handleSort('company')}>Company{sortArrow('company')}</th>
-                  <th className="sortable-header" onClick={() => handleSort('owner')}>Relationship Owner{sortArrow('owner')}</th>
-                  <th className="sortable-header" onClick={() => handleSort('created_by')}>Created By{sortArrow('created_by')}</th>
-                  <th className="sortable-header" onClick={() => handleSort('created_at')}>Created At{sortArrow('created_at')}</th>
-                  <th>Emails</th>
-                  <th>Phones</th>
-                  <th className="sortable-header" onClick={() => handleSort('status')}>Status{sortArrow('status')}</th>
-                  <th className="sortable-header" onClick={() => handleSort('next_contact_due_at')}>Next Follow-up{sortArrow('next_contact_due_at')}</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contacts.map((contact) => (
-                  <tr key={contact.id}>
-                    <td>
-                      <Link to={`/contacts/${contact.id}`} className="contact-name">
-                        {contact.first_name} {contact.last_name}
-                      </Link>
-                    </td>
-                    <td>{contact.company_name || '-'}</td>
-                    <td>
-                      <span className="owner-badge" title={contact.owner_email}>
-                        {contact.owner_full_name}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="owner-badge" title={contact.created_by_email}>
-                        {contact.created_by_full_name}
-                      </span>
-                    </td>
-                    <td>{fmtDate(fromServer(contact.created_at))}</td>
-                    <td>
-                      {contact.contact_details.filter((d: { type: string }) => d.type === 'email').length > 0
-                        ? contact.contact_details.filter((d: { type: string }) => d.type === 'email').map((d: { value: string }) => d.value).join(', ')
-                        : '-'}
-                    </td>
-                    <td>
-                      {contact.contact_details.filter((d: { type: string }) => d.type === 'phone').length > 0
-                        ? contact.contact_details.filter((d: { type: string }) => d.type === 'phone').map((d: { value: string }) => d.value).join(', ')
-                        : '-'}
-                    </td>
-                    <td>
-                      <span className="status-badge">{contact.current_relationship_status}</span>
-                    </td>
-                    <td>
-                      {contact.next_contact_due_at
-                        ? fmtDate(fromServer(contact.next_contact_due_at))
-                        : '-'}
-                    </td>
-                    <td>
-                      <div className="table-actions">
-                        <Link to={`/contacts/${contact.id}`} className="btn-link-small">
-                          View
-                        </Link>
-                        <Link to={`/contacts/${contact.id}?edit=true`} className="btn-link-small">
-                          Edit
-                        </Link>
-                        {canDelete(contact) && (
-                          <button
-                            onClick={() => handleDelete(contact)}
-                            className="btn-link-small btn-danger-link"
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {error && <Alert tone="error">{error}</Alert>}
 
-        {!loading && total > 0 && (
-          <div className="pagination">
-            <span className="pagination-info">
-              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
-            </span>
-            <div className="pagination-controls">
-              <button
-                className="btn-link-small"
-                disabled={page <= 1}
-                onClick={() => goToPage(page - 1)}
-              >
-                ← Previous
-              </button>
-              <span className="pagination-page">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                className="btn-link-small"
-                disabled={page >= totalPages}
-                onClick={() => goToPage(page + 1)}
-              >
-                Next →
-              </button>
+        {loading ? (
+          <TableSkeleton />
+        ) : contacts.length === 0 ? (
+          hasFilters ? (
+            <EmptyState compact title="No contacts match" action={<button type="button" className="btn" onClick={list.clearFilters}>Clear filters</button>}>
+              Try a different search or remove a filter.
+            </EmptyState>
+          ) : (
+            <EmptyState icon="👤" title="No contacts yet" action={<Link to="/contacts/new" className="btn btn-primary btn-lg">+ Add your first contact</Link>}>
+              Contacts are the people you work with. Add one to start tracking conversations and follow-ups.
+            </EmptyState>
+          )
+        ) : (
+          <>
+            <div className={`card table-card${refreshing ? ' is-refreshing' : ''}`}>
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <Th k="name">Name</Th>
+                      <Th k="company">Company</Th>
+                      <th>Contact</th>
+                      <Th k="status">Status</Th>
+                      <Th k="next_contact_due_at">Follow-up</Th>
+                      <Th k="owner">Owner</Th>
+                      <Th k="created_at">Created</Th>
+                      <th aria-label="Actions" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contacts.map((c) => (
+                      <tr key={c.id}>
+                        <td>
+                          <div className="name-cell">
+                            <Link to={detailPath('contact', c.id)} className="row-link">{c.first_name} {c.last_name}</Link>
+                            {c.priority && <PriorityBadge value={c.priority} size="sm" />}
+                          </div>
+                          {c.job_title && <div className="cell-sub">{c.job_title}</div>}
+                        </td>
+                        <td>
+                          {c.company_id && c.company_name ? <Link to={`/companies/${c.company_id}`}>{c.company_name}</Link> : <span className="faint">—</span>}
+                        </td>
+                        <td>
+                          <ContactLinks
+                            emails={[...(c.email ? [c.email] : []), ...c.contact_details.filter((d) => d.type === 'email').map((d) => d.value)].filter((v, i, a) => a.indexOf(v) === i)}
+                            phones={[...(c.phone ? [c.phone] : []), ...c.contact_details.filter((d) => d.type === 'phone').map((d) => d.value)].filter((v, i, a) => a.indexOf(v) === i)}
+                          />
+                        </td>
+                        <td><StatusBadge status={c.current_relationship_status} /></td>
+                        <td><FollowUpBadge value={c.next_contact_due_at} /></td>
+                        <td><Person name={c.owner_full_name} title={c.owner_email} firstNameOnly /></td>
+                        <td>
+                          <div className="nowrap">{fmtDate(fromServer(c.created_at))}</div>
+                          {c.created_by_full_name && <div className="cell-sub">by {c.created_by_full_name.split(' ')[0]}</div>}
+                        </td>
+                        <td className="right">
+                          <RowMenu
+                            actions={[
+                              { label: 'Open', to: detailPath('contact', c.id) },
+                              { label: 'Edit', to: `${detailPath('contact', c.id)}?edit=true` },
+                              { label: 'Delete', onClick: () => handleDelete(c), danger: true, hidden: !canDelete(c) },
+                            ]}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              pageSizeOptions={list.pageSizes}
+              onPageChange={(p) => setParam({ page: p > 1 ? String(p) : null })}
+              onPageSizeChange={(s) => setParam({ size: s === 25 ? null : String(s) })}
+            />
+          </>
         )}
       </div>
     </MainLayout>

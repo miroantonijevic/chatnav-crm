@@ -1,21 +1,23 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { UiProvider } from './contexts/UiContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/Login'
 import { ChangePasswordPage } from './pages/ChangePassword'
 import { DashboardPage } from './pages/Dashboard'
+import { PipelinePage } from './pages/Pipeline'
 import { ContactsListPage } from './pages/ContactsList'
 import { ContactDetailPage } from './pages/ContactDetail'
 import { CompaniesListPage } from './pages/CompaniesList'
 import { CompanyDetailPage } from './pages/CompanyDetail'
 import { UsersPage } from './pages/Users'
 import { RemindersPage } from './pages/Reminders'
-import './App.css'
 
 function App() {
   return (
     <Router>
       <AuthProvider>
+        <UiProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/change-password" element={<ChangePasswordPage />} />
@@ -25,6 +27,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/pipeline"
+            element={
+              <ProtectedRoute>
+                <PipelinePage />
               </ProtectedRoute>
             }
           />
@@ -86,6 +97,7 @@ function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
+        </UiProvider>
       </AuthProvider>
     </Router>
   )

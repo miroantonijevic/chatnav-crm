@@ -15,6 +15,7 @@ from app.services.company_service import CompanyService
 from app.services.company_history_service import CompanyHistoryService
 from app.api.dependencies import get_current_active_user
 from app.models.user import User, UserRole
+from app.utils.sentinel import UNSET
 
 router = APIRouter(prefix="/companies", tags=["Companies"])
 
@@ -223,5 +224,6 @@ async def mark_company_contacted(
         status=body.status,
         interaction_at=body.interaction_at,
         next_contact_due_at=body.next_contact_due_at,
+        next_action=body.next_action if "next_action" in body.model_fields_set else UNSET,
     )
     return history

@@ -1,0 +1,31 @@
+/* Dashboard */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+@media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kpi { position: relative; display: flex; flex-direction: column; gap: 0.15rem; padding: 1.1rem 1.25rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); color: var(--ink); text-decoration: none !important; transition: box-shadow 0.15s, transform 0.15s, border-color 0.15s; overflow: hidden; }
+.kpi:hover { box-shadow: var(--shadow); transform: translateY(-1px); border-color: #c3cbf5; }
+.kpi-icon { position: absolute; right: 1rem; top: 0.9rem; font-size: 1.5rem; opacity: 0.85; }
+.kpi-value { font-size: 2.1rem; font-weight: 750; line-height: 1.1; letter-spacing: -0.02em; color: var(--brand-600); }
+.kpi-label { color: var(--muted); font-size: 0.86rem; }
+.kpi-alert .kpi-value { color: var(--danger); }
+.kpi-alert { border-color: #fecdca; background: linear-gradient(180deg, #fff, var(--danger-50)); }
+
+.cell-clamp { max-width: 260px; color: var(--ink-2); }
+
+.breakdown-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+@media (max-width: 800px) { .breakdown-grid { grid-template-columns: 1fr; gap: 1.5rem; } }
+.breakdown-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.6rem; font-size: 0.95rem; }
+.breakdown-head a { font-size: 0.85rem; }
+.breakdown-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--line-2); }
+.breakdown-bar span { display: block; height: 100%; }
+.breakdown-bar span + span { box-shadow: -2px 0 0 #fff; }
+.breakdown-legend { list-style: none; margin: 0.8rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; font-size: 0.82rem; color: var(--muted); }
+.breakdown-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 0.35rem; }
+.breakdown-legend b { color: var(--ink); margin-left: 0.15rem; }
+
+.activity-users { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--line-2); }
+.activity-user { padding: 0.85rem 1rem; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
+.activity-user-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
+.activity-user-head strong { flex: 1; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-user-counts { display: flex; gap: 0.8rem; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.4rem; }
+.activity-user-counts b { color: var(--ink); }
+.card-body.is-refreshing { opacity: 0.6; transition: opacity 0.15s; }

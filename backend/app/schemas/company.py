@@ -6,6 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, model_validator
 
 from app.models.contact import RelationshipStatus
+from app.schemas.deal import PipelineFieldsMixin
 
 
 class CompanyContactDetailCreate(BaseModel):
@@ -24,7 +25,7 @@ class CompanyContactDetailResponse(BaseModel):
         from_attributes = True
 
 
-class CompanyCreate(BaseModel):
+class CompanyCreate(PipelineFieldsMixin):
     name: str
     industry: Optional[str] = None
     notes: Optional[str] = None
@@ -35,7 +36,7 @@ class CompanyCreate(BaseModel):
     contact_details: List[CompanyContactDetailCreate] = []
 
 
-class CompanyUpdate(BaseModel):
+class CompanyUpdate(PipelineFieldsMixin):
     name: Optional[str] = None
     industry: Optional[str] = None
     notes: Optional[str] = None
@@ -46,7 +47,7 @@ class CompanyUpdate(BaseModel):
     contact_details: Optional[List[CompanyContactDetailCreate]] = None  # if provided, replaces all existing details
 
 
-class CompanyResponse(BaseModel):
+class CompanyResponse(PipelineFieldsMixin):
     id: int
     name: str
     industry: Optional[str] = None

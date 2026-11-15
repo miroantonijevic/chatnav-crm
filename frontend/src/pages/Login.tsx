@@ -5,9 +5,12 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { authApi } from '../api';
-import './Login.css';
+import { AuthShell, PasswordInput } from '../components/AuthShell';
+import { Alert } from '../components/ui';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 export const LoginPage: React.FC = () => {
+  usePageTitle('Sign in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -23,12 +26,7 @@ export const LoginPage: React.FC = () => {
     try {
       const response = await authApi.login({ email, password });
       await login(response.access_token);
-
-      if (response.must_change_password) {
-        navigate('/change-password');
-      } else {
-        navigate('/dashboard');
-      }
+      navigate(response.must_change_password ? '/change-password' : '/dashboard');
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally {
@@ -37,40 +35,33 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <h1>CRM Login</h1>
-        <form onSubmit={handleSubmit}>
-          {error && <div className="error-message">{error}</div>}
+    <AuthShell title="Welcome back" subtitle="Sign in to your account to continue.">
+      <form onSubmit={handleSubmit}>
+        {error && <Alert tone="error">{error}</Alert>}
 
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoFocus
-            />
-          </div>
+        <div className="field">
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            autoComplete="username"
+            required
+            autoFocus
+          />
+        </div>
 
-          <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
+        <div className="field">
+          <label htmlFor="password">Password</label>
+          <PasswordInput id="password" value={password} onChange={setPassword} autoComplete="current-password" required />
+        </div>
 
-          <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? 'Logging in...' : 'Login'}
-          </button>
-        </form>
-      </div>
-    </div>
+        <button type="submit" disabled={loading} className="btn btn-primary">
+          {loading ? <><span className="spinner" /> Signing in…</> : 'Sign in'}
+        </button>
+      </form>
+    </AuthShell>
   );
 };

@@ -10,6 +10,7 @@ from sqlalchemy.orm import joinedload
 from app.models.contact import Contact, RelationshipStatus
 from app.models.relationship_history import RelationshipHistory
 from app.models.user import User
+from app.utils.sentinel import UNSET
 from app.schemas.history import HistoryCreate
 
 
@@ -110,6 +111,7 @@ class HistoryService:
         status: Optional[RelationshipStatus] = None,
         interaction_at: Optional[datetime] = None,
         next_contact_due_at: Optional[datetime] = None,
+        next_action=UNSET,
     ) -> RelationshipHistory:
         """
         Quick-action: log a marked_contacted interaction, clear next_contact_due_at
@@ -136,6 +138,8 @@ class HistoryService:
         contact.current_relationship_status = effective_status
         contact.last_contacted_at = now
         contact.next_contact_due_at = next_contact_due_at
+        if next_action is not UNSET:
+            contact.next_action = (next_action or "").strip() or None
 
         await db.commit()
         await db.refresh(db_history)
