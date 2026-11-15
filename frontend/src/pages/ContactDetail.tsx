@@ -362,7 +362,7 @@ export const ContactDetailPage: React.FC = () => {
               <DetailsEditor kinds={DETAIL_KINDS} rows={rows} onChange={setRows} />
             </FormSection>
 
-            <FormSection title="Pipeline & deal" description="Rank this contact to show it in the Pipeline, and track the deal.">
+            <FormSection title="Hot list & deal" description="Rank this contact to show it in the Hot list, and track the deal.">
               <PipelineFields values={formData} onChange={(patch) => setFormData({ ...formData, ...patch })} />
               <div className="field">
                 <label htmlFor="next_contact_due_at_date">Next follow-up</label>
@@ -450,7 +450,7 @@ export const ContactDetailPage: React.FC = () => {
 
           <aside className="stack">
             <section className="card">
-              <div className="card-head"><h3>Pipeline</h3></div>
+              <div className="card-head"><h3>Hot list</h3></div>
               <dl className="info-list">
                 <InfoRow label="Next action">{c.next_action || <span className="faint">Not set</span>}</InfoRow>
                 <InfoRow label="Follow-up">

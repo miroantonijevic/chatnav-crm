@@ -232,7 +232,7 @@ export const AddToPipelineModal: React.FC<AddModalProps> = ({ onClose, onChanged
   };
 
   return (
-    <Modal title="Add to pipeline" onClose={close} size="wide">
+    <Modal title="Add to hot list" onClose={close} size="wide">
       <div className="modal-body">
         <div className="search">
           <span className="search-icon"><SearchIcon /></span>
@@ -252,7 +252,7 @@ export const AddToPipelineModal: React.FC<AddModalProps> = ({ onClose, onChanged
           {!search.trim() && (
             <p className="pl-add-hint">
               Search for a company or contact, then rank it <strong>Hot</strong>, <strong>Warm</strong> or <strong>Cold</strong> to
-              add it to the pipeline.
+              add it to the hot list.
             </p>
           )}
           {search.trim() && !loading && results.length === 0 && !error && (
@@ -287,7 +287,7 @@ export const AddToPipelineModal: React.FC<AddModalProps> = ({ onClose, onChanged
                     </button>
                   ))}
                   {r.priority && (
-                    <button type="button" className="pl-add-remove" disabled={busyKey === key} onClick={() => setPriority(r, null)} title="Remove from pipeline">
+                    <button type="button" className="pl-add-remove" disabled={busyKey === key} onClick={() => setPriority(r, null)} title="Remove from hot list">
                       Remove
                     </button>
                   )}

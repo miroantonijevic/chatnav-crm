@@ -322,3 +322,4 @@ button { font-family: inherit; }
 }
 
 .chip-fav.active { background: #fff6e0; border-color: #f5a623; color: #b54708; }
+.modal-body .search { flex: 0 0 auto; }

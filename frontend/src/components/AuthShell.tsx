@@ -13,7 +13,7 @@ export const AuthShell: React.FC<{ title: string; subtitle?: string; children: R
         <h2>Keep every relationship moving.</h2>
         <p>Track contacts and companies, never miss a follow-up, and see your hottest deals at a glance.</p>
         <ul>
-          <li>🔥 Hot, warm and cold pipeline</li>
+          <li>🔥 Hot, warm and cold list</li>
           <li>⏰ Follow-up reminders by email</li>
           <li>📈 Team activity at a glance</li>
         </ul>

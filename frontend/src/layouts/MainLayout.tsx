@@ -52,7 +52,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
           <nav className={`nav${navOpen ? ' open' : ''}`} aria-label="Main">
             <NavLink to="/dashboard">Dashboard</NavLink>
-            <NavLink to="/pipeline">Pipeline</NavLink>
+            <NavLink to="/pipeline">Hot list</NavLink>
             <NavLink to="/contacts">Contacts</NavLink>
             <NavLink to="/companies">Companies</NavLink>
             {isAdmin && (

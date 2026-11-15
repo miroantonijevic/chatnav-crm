@@ -49,7 +49,7 @@ export const PriorityPicker: React.FC<PickerProps> = ({ value, onChange, disable
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={anchor !== null}
-        title={value ? 'Change priority' : 'Add to pipeline'}
+        title={value ? 'Change priority' : 'Add to hot list'}
         onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}
       >
         {value ? <PriorityBadge value={value} size={size} /> : <span className="pl-priority-add">+ Set priority</span>}
@@ -72,7 +72,7 @@ export const PriorityPicker: React.FC<PickerProps> = ({ value, onChange, disable
           ))}
           {value && (
             <button type="button" role="menuitem" className="pl-menu-item pl-menu-remove" onClick={() => pick(null)}>
-              Remove from pipeline
+              Remove from hot list
             </button>
           )}
         </Popover>

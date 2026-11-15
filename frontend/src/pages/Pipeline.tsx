@@ -54,7 +54,7 @@ const SORT_KEYS = ['priority', 'name', 'stage', 'due', 'value', 'last_contacted'
 const itemKey = (i: Pick<PipelineItem, 'entity_type' | 'id'>) => `${i.entity_type}-${i.id}`;
 
 export const PipelinePage: React.FC = () => {
-  usePageTitle('Pipeline');
+  usePageTitle('Hot list');
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
 
@@ -147,7 +147,7 @@ export const PipelinePage: React.FC = () => {
           setParam({ page: String(Math.ceil(list.total / pageSize)) }, true);
         }
       } catch (err: any) {
-        if (id === reqRef.current) setError(err.message || 'Failed to load pipeline');
+        if (id === reqRef.current) setError(err.message || 'Failed to load hot list');
       } finally {
         if (id === reqRef.current) {
           setLoading(false);
@@ -227,7 +227,7 @@ export const PipelinePage: React.FC = () => {
   );
 
   const changePriority = (item: PipelineItem, next: Priority | null) => {
-    const label = next ? `${item.name} is now ${PRIORITY_META[next].label.toLowerCase()}` : `${item.name} removed from the pipeline`;
+    const label = next ? `${item.name} is now ${PRIORITY_META[next].label.toLowerCase()}` : `${item.name} removed from the hot list`;
     applyUpdate(item, { priority: next }, label, { priority: item.priority ?? null });
   };
 
@@ -296,11 +296,11 @@ export const PipelinePage: React.FC = () => {
       <div className="page">
         <div className="page-header">
           <div>
-            <h1 className="page-title">Pipeline</h1>
+            <h1 className="page-title">Hot list</h1>
             <p className="page-sub">The companies and contacts you are actively working, hottest first.</p>
           </div>
           <button type="button" className="btn btn-primary btn-lg" onClick={() => setAdding(true)}>
-            + Add to pipeline
+            + Add to hot list
           </button>
         </div>
 
@@ -343,7 +343,7 @@ export const PipelinePage: React.FC = () => {
 
         {summary && (summary.mrr > 0 || summary.one_time > 0) && (
           <div className="pl-valuebar">
-            <span>Pipeline value</span>
+            <span>Hot list value</span>
             <strong>{formatMoney(summary.mrr)} / mo</strong>
             <span className="pl-valuebar-yr">≈ {formatMoney(summary.mrr * 12)} / yr</span>
             {summary.one_time > 0 && <span className="pl-valuebar-one">+ {formatMoney(summary.one_time)} one-time</span>}
@@ -357,7 +357,7 @@ export const PipelinePage: React.FC = () => {
             value={searchText}
             onChange={setSearchText}
             placeholder="Search name, company, owner, notes…   ( / )"
-            label="Search pipeline"
+            label="Search hot list"
           />
 
           <div className="segment" role="group" aria-label="Type">
@@ -441,7 +441,7 @@ export const PipelinePage: React.FC = () => {
         ) : pipelineEmpty ? (
           <EmptyState
             icon="🔥"
-            title="Your pipeline is empty"
+            title="Your hot list is empty"
             action={<button type="button" className="btn btn-primary btn-lg" onClick={() => setAdding(true)}>+ Add your first one</button>}
           >
             Add the companies and contacts you are actively working on and rank them Hot, Warm or Cold. You will see what needs
@@ -453,7 +453,7 @@ export const PipelinePage: React.FC = () => {
             title={favorites && !hasFilters ? 'No favorites yet' : 'No matches'}
             action={hasFilters ? <button type="button" className="btn" onClick={clearFilters}>Clear filters</button> : undefined}
           >
-            {favorites ? 'Star the items you want to keep an eye on.' : 'Nothing in the pipeline fits the current filters.'}
+            {favorites ? 'Star the items you want to keep an eye on.' : 'Nothing in the hot list fits the current filters.'}
           </EmptyState>
         ) : (
           <>
@@ -607,7 +607,7 @@ export const PipelinePage: React.FC = () => {
         <AddToPipelineModal
           onClose={() => setAdding(false)}
           onChanged={() => {
-            showToast('Pipeline updated');
+            showToast('Hot list updated');
             load(true);
           }}
         />

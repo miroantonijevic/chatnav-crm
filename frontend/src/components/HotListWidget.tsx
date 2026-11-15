@@ -60,9 +60,9 @@ export const HotListWidget: React.FC = () => {
           </button>
         </div>
         <div className="pl-widget-meta">
-          {summary && summary.mrr > 0 && <span className="pl-widget-mrr">Pipeline {formatMoney(summary.mrr)} / mo</span>}
+          {summary && summary.mrr > 0 && <span className="pl-widget-mrr">Hot list {formatMoney(summary.mrr)} / mo</span>}
           <Link to={total > 0 ? link : '/pipeline'} className="pl-widget-link">
-            {total > LIMIT ? `View all ${total} →` : 'Open pipeline →'}
+            {total > LIMIT ? `View all ${total} →` : 'Open hot list →'}
           </Link>
         </div>
       </div>
@@ -70,11 +70,11 @@ export const HotListWidget: React.FC = () => {
       {items.length === 0 ? (
         <p className="pl-widget-empty">
           {tab === 'favorites' ? (
-            <>Star the companies and contacts you want to keep an eye on to see them here. <Link to="/pipeline">Open the pipeline</Link></>
+            <>Star the companies and contacts you want to keep an eye on to see them here. <Link to="/pipeline">Open the hot list</Link></>
           ) : summary && summary.total > 0 ? (
-            <>Nothing is hot right now. <Link to="/pipeline">Open the pipeline</Link> to see {summary.total} other item{summary.total === 1 ? '' : 's'}.</>
+            <>Nothing is hot right now. <Link to="/pipeline">Open the hot list</Link> to see {summary.total} other item{summary.total === 1 ? '' : 's'}.</>
           ) : (
-            <>Rank the companies and contacts you are actively working on to see them here. <Link to="/pipeline">Start your pipeline</Link></>
+            <>Rank the companies and contacts you are actively working on to see them here. <Link to="/pipeline">Start your hot list</Link></>
           )}
         </p>
       ) : (
