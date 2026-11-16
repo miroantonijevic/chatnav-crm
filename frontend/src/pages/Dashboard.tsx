@@ -8,8 +8,8 @@ import { MainLayout } from '../layouts/MainLayout';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/UiContext';
 import { usePageTitle } from '../hooks/usePageTitle';
-import { companyApi, contactApi, dashboardApi, reminderApi } from '../api';
-import { ActivityStats, Company, Contact, EntityStats, ReminderStats, RelationshipStatus } from '../types';
+import { companyApi, contactApi, dashboardApi } from '../api';
+import { ActivityStats, Company, Contact, EntityStats, RelationshipStatus } from '../types';
 import { HotListWidget } from '../components/HotListWidget';
 import { ContactedModal } from '../components/PipelineDialogs';
 import { FollowUpBadge } from '../components/EntityBits';
@@ -102,7 +102,7 @@ export const DashboardPage: React.FC = () => {
   const toast = useToast();
 
   const [attention, setAttention] = useState<AttentionItem[]>([]);
-  const [reminders, setReminders] = useState<ReminderStats | null>(null);
+  const [counts, setCounts] = useState({ dueContacts: 0, dueCompanies: 0, upContacts: 0, upCompanies: 0 });
   const [contactStats, setContactStats] = useState<EntityStats | null>(null);
   const [companyStats, setCompanyStats] = useState<EntityStats | null>(null);
   const [activity, setActivity] = useState<ActivityStats | null>(null);
@@ -114,15 +114,16 @@ export const DashboardPage: React.FC = () => {
 
   const loadData = useCallback(async () => {
     try {
-      const [dueContacts, dueCompanies, stats, cStats, coStats] = await Promise.all([
+      const [dueContacts, dueCompanies, upContacts, upCompanies, cStats, coStats] = await Promise.all([
         contactApi.list({ due_only: true, limit: 10, sort_by: 'next_contact_due_at' }),
         companyApi.list({ due_only: true, limit: 10, sort_by: 'next_contact_due_at' }),
-        reminderApi.getStats(),
+        contactApi.list({ upcoming_only: true, limit: 1 }),
+        companyApi.list({ upcoming_only: true, limit: 1 }),
         contactApi.getStats(),
         companyApi.getStats(),
       ]);
       setAttention(toAttention(dueContacts.items, dueCompanies.items));
-      setReminders(stats);
+      setCounts({ dueContacts: dueContacts.total, dueCompanies: dueCompanies.total, upContacts: upContacts.total, upCompanies: upCompanies.total });
       setContactStats(cStats);
       setCompanyStats(coStats);
     } catch (err) {
@@ -149,8 +150,8 @@ export const DashboardPage: React.FC = () => {
     };
   }, [days]);
 
-  const dueNow = (reminders?.due_now ?? 0) + (reminders?.companies_due_now ?? 0);
-  const upcoming = (reminders?.upcoming_7_days ?? 0) + (reminders?.companies_upcoming_7_days ?? 0);
+  const dueNow = counts.dueContacts + counts.dueCompanies;
+  const upcoming = counts.upContacts + counts.upCompanies;
   const firstName = user?.full_name?.split(' ')[0] ?? '';
 
   const today = useMemo(
@@ -182,16 +183,24 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         <div className="kpi-grid">
-          <Link to="/pipeline?due=overdue" className={`kpi${dueNow > 0 ? ' kpi-alert' : ''}`}>
+          <div className={`kpi${dueNow > 0 ? ' kpi-alert' : ''}`}>
             <span className="kpi-icon">⏰</span>
             <span className="kpi-value">{dueNow}</span>
             <span className="kpi-label">Follow-ups due</span>
-          </Link>
-          <Link to="/pipeline?due=week" className="kpi">
+            <span className="kpi-links">
+              <Link to="/contacts?due_only=true">{counts.dueContacts} contacts</Link>
+              <Link to="/companies?due_only=true">{counts.dueCompanies} companies</Link>
+            </span>
+          </div>
+          <div className="kpi">
             <span className="kpi-icon">📅</span>
             <span className="kpi-value">{upcoming}</span>
-            <span className="kpi-label">Coming up in 7 days</span>
-          </Link>
+            <span className="kpi-label">Upcoming follow-ups</span>
+            <span className="kpi-links">
+              <Link to="/contacts?upcoming_only=true">{counts.upContacts} contacts</Link>
+              <Link to="/companies?upcoming_only=true">{counts.upCompanies} companies</Link>
+            </span>
+          </div>
           <Link to="/contacts" className="kpi">
             <span className="kpi-icon">👤</span>
             <span className="kpi-value">{contactStats?.total ?? 0}</span>
@@ -212,7 +221,6 @@ export const DashboardPage: React.FC = () => {
               <h2>Needs attention</h2>
               <p className="card-sub">Follow-ups that are due or overdue</p>
             </div>
-            {attention.length > 0 && <Link to="/pipeline?due=overdue" className="btn btn-sm">View in hot leads</Link>}
           </div>
           {attention.length === 0 ? (
             <div className="card-body">

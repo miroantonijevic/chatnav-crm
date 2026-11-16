@@ -29,6 +29,7 @@ export const ContactsListPage: React.FC = () => {
 
   const status = (Object.values(RelationshipStatus) as string[]).includes(params.get('status') ?? '') ? params.get('status')! : '';
   const dueOnly = params.get('due_only') === 'true';
+  const upcomingOnly = params.get('upcoming_only') === 'true';
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [total, setTotal] = useState(0);
@@ -47,6 +48,7 @@ export const ContactsListPage: React.FC = () => {
         search: search || undefined,
         status: status || undefined,
         due_only: dueOnly,
+        upcoming_only: upcomingOnly,
         skip: (page - 1) * pageSize,
         limit: pageSize,
         sort_by: sortBy || undefined,
@@ -65,7 +67,7 @@ export const ContactsListPage: React.FC = () => {
         setRefreshing(false);
       }
     }
-  }, [search, status, dueOnly, page, pageSize, sortBy, sortOrder, setParam]);
+  }, [search, status, dueOnly, upcomingOnly, page, pageSize, sortBy, sortOrder, setParam]);
 
   const loadStats = useCallback(async () => {
     try {
@@ -82,7 +84,7 @@ export const ContactsListPage: React.FC = () => {
     loadStats();
   }, [loadStats]);
 
-  const hasFilters = Boolean(search || status || dueOnly);
+  const hasFilters = Boolean(search || status || dueOnly || upcomingOnly);
   const canDelete = (c: Contact) => user?.role === 'admin' || c.owner_user_id === user?.id;
 
   const handleDelete = async (c: Contact) => {
@@ -124,10 +126,10 @@ export const ContactsListPage: React.FC = () => {
 
         {stats && (
           <div className="stat-row" role="group" aria-label="Filter by status">
-            <button type="button" className={`stat-pill${!status && !dueOnly ? ' active' : ''}`} onClick={() => setParam({ status: null, due_only: null })}>
+            <button type="button" className={`stat-pill${!status && !dueOnly && !upcomingOnly ? ' active' : ''}`} onClick={() => setParam({ status: null, due_only: null, upcoming_only: null })}>
               <strong>{stats.total}</strong> All
             </button>
-            <button type="button" className={`stat-pill is-warn${dueOnly ? ' active' : ''}`} onClick={() => setParam({ due_only: dueOnly ? null : 'true' })}>
+            <button type="button" className={`stat-pill is-warn${dueOnly ? ' active' : ''}`} onClick={() => setParam({ due_only: dueOnly ? null : 'true', upcoming_only: null })}>
               <strong>{stats.due_now}</strong> Needs follow-up
             </button>
             {Object.values(RelationshipStatus).map((s) => (

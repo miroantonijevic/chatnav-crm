@@ -29,3 +29,6 @@
 .activity-user-counts { display: flex; gap: 0.8rem; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.4rem; }
 .activity-user-counts b { color: var(--ink); }
 .card-body.is-refreshing { opacity: 0.6; transition: opacity 0.15s; }
+
+.kpi-links { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; margin-top: 0.35rem; font-size: 0.82rem; }
+.kpi-links a { color: var(--brand-600); }

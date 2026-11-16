@@ -27,6 +27,7 @@ export const CompaniesListPage: React.FC = () => {
   const list = useListParams();
   const { params, setParam, search, page, pageSize, sortBy, sortOrder } = list;
   const dueOnly = params.get('due_only') === 'true';
+  const upcomingOnly = params.get('upcoming_only') === 'true';
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [total, setTotal] = useState(0);
@@ -44,6 +45,7 @@ export const CompaniesListPage: React.FC = () => {
       const data = await companyApi.list({
         search: search || undefined,
         due_only: dueOnly,
+        upcoming_only: upcomingOnly,
         skip: (page - 1) * pageSize,
         limit: pageSize,
         sort_by: sortBy || undefined,
@@ -62,7 +64,7 @@ export const CompaniesListPage: React.FC = () => {
         setRefreshing(false);
       }
     }
-  }, [search, dueOnly, page, pageSize, sortBy, sortOrder, setParam]);
+  }, [search, dueOnly, upcomingOnly, page, pageSize, sortBy, sortOrder, setParam]);
 
   const loadStats = useCallback(async () => {
     try {
@@ -79,7 +81,7 @@ export const CompaniesListPage: React.FC = () => {
     loadStats();
   }, [loadStats]);
 
-  const hasFilters = Boolean(search || dueOnly);
+  const hasFilters = Boolean(search || dueOnly || upcomingOnly);
   const canDelete = (c: Company) => user?.role === 'admin' || c.owner_user_id === user?.id;
 
   const handleDelete = async (c: Company) => {
@@ -123,10 +125,10 @@ export const CompaniesListPage: React.FC = () => {
 
         {stats && (
           <div className="stat-row" role="group" aria-label="Summary">
-            <button type="button" className={`stat-pill${!dueOnly ? ' active' : ''}`} onClick={() => setParam({ due_only: null })}>
+            <button type="button" className={`stat-pill${!dueOnly && !upcomingOnly ? ' active' : ''}`} onClick={() => setParam({ due_only: null, upcoming_only: null })}>
               <strong>{stats.total}</strong> All
             </button>
-            <button type="button" className={`stat-pill is-warn${dueOnly ? ' active' : ''}`} onClick={() => setParam({ due_only: dueOnly ? null : 'true' })}>
+            <button type="button" className={`stat-pill is-warn${dueOnly ? ' active' : ''}`} onClick={() => setParam({ due_only: dueOnly ? null : 'true', upcoming_only: null })}>
               <strong>{stats.due_now}</strong> Needs follow-up
             </button>
             {Object.values(RelationshipStatus).map((s) => (
