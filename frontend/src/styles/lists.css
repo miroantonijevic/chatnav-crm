@@ -10,3 +10,6 @@
 
 .stat-pill.static { cursor: default; }
 .stat-pill.static:hover { border-color: var(--line); background: var(--surface); }
+
+.row-actions { white-space: nowrap; }
+.row-actions .btn { margin-right: 0.25rem; }

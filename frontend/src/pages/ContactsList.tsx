@@ -13,9 +13,12 @@ import { usePageTitle } from '../hooks/usePageTitle';
 import { useScrollRestoration } from '../utils/useScrollRestoration';
 import { fromServer, fmtDate } from '../utils/dates';
 import { STATUS_LABELS, detailPath } from '../utils/pipeline';
+import { useFollowUpEditor } from '../hooks/useFollowUpEditor';
+import { FollowUpCell } from '../components/PipelineCells';
+import { ContactedModal } from '../components/PipelineDialogs';
 import { HotBadge } from '../components/HotToggle';
 import { Pagination } from '../components/Pagination';
-import { ContactLinks, FollowUpBadge } from '../components/EntityBits';
+import { ContactLinks } from '../components/EntityBits';
 import { Alert, EmptyState, Person, RowMenu, SearchBox, StatusBadge, TableSkeleton } from '../components/ui';
 import '../styles/lists.css';
 
@@ -83,6 +86,13 @@ export const ContactsListPage: React.FC = () => {
   useEffect(() => {
     loadStats();
   }, [loadStats]);
+
+  const [logItem, setLogItem] = useState<Contact | null>(null);
+  const refreshAll = useCallback(() => {
+    load();
+    loadStats();
+  }, [load, loadStats]);
+  const changeFollowUp = useFollowUpEditor<Contact>('contact', setContacts, refreshAll);
 
   const hasFilters = Boolean(search || status || dueOnly || upcomingOnly);
   const canDelete = (c: Contact) => user?.role === 'admin' || c.owner_user_id === user?.id;
@@ -196,15 +206,24 @@ export const ContactsListPage: React.FC = () => {
                           />
                         </td>
                         <td><StatusBadge status={c.current_relationship_status} /></td>
-                        <td><FollowUpBadge value={c.next_contact_due_at} /></td>
+                        <td>
+                          <FollowUpCell
+                            value={c.next_contact_due_at}
+                            onSave={(iso) => changeFollowUp(c, iso, iso ? 'Follow-up rescheduled' : 'Removed from the follow-up list')}
+                          />
+                        </td>
                         <td><Person name={c.owner_full_name} title={c.owner_email} firstNameOnly /></td>
                         <td>
                           <div className="nowrap">{fmtDate(fromServer(c.created_at))}</div>
                           {c.created_by_full_name && <div className="cell-sub">by {c.created_by_full_name.split(' ')[0]}</div>}
                         </td>
-                        <td className="right">
+                        <td className="right row-actions">
+                          <button type="button" className="btn btn-sm" onClick={() => setLogItem(c)} title="Log that you contacted them and set the next follow-up">
+                            ✓ Contacted
+                          </button>
                           <RowMenu
                             actions={[
+                              { label: 'Remove from follow-up list', onClick: () => changeFollowUp(c, null, 'Removed from the follow-up list'), hidden: !c.next_contact_due_at },
                               { label: 'Open', to: detailPath('contact', c.id) },
                               { label: 'Edit', to: `${detailPath('contact', c.id)}?edit=true` },
                               { label: 'Delete', onClick: () => handleDelete(c), danger: true, hidden: !canDelete(c) },
@@ -229,6 +248,18 @@ export const ContactsListPage: React.FC = () => {
           </>
         )}
       </div>
+
+      {logItem && (
+        <ContactedModal
+          item={{ entity_type: 'contact', id: logItem.id, name: `${logItem.first_name} ${logItem.last_name}`, status: logItem.current_relationship_status, next_action: logItem.next_action }}
+          onClose={() => setLogItem(null)}
+          onSaved={() => {
+            toast(`Logged contact with ${`${logItem.first_name} ${logItem.last_name}`}`);
+            setLogItem(null);
+            refreshAll();
+          }}
+        />
+      )}
     </MainLayout>
   );
 };
