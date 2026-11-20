@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useConfirm, useToast } from '../contexts/UiContext';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { fmtDateTime, fromServer, toInputLocal } from '../utils/dates';
+import { listUrl, splitValues } from '../utils/lists';
 import { STAGE_META, STATUS_LABELS, WAITING_META, detailPath, formatDeal } from '../utils/pipeline';
 import { HotBadge, HotToggle } from '../components/HotToggle';
 import { PipelineFields } from '../components/PipelineFields';
@@ -45,6 +46,8 @@ export const CompanyDetailPage: React.FC = () => {
   const confirm = useConfirm();
   const [searchParams] = useSearchParams();
   const isNew = id === 'new';
+  const backTo = listUrl('companies');
+  const openedForEdit = useRef(searchParams.get('edit') === 'true'); // came from a list row's Edit action
 
   const [company, setCompany] = useState<Company | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -198,9 +201,13 @@ export const CompanyDetailPage: React.FC = () => {
         navigate(`/companies/${created.id}`);
       } else {
         await companyApi.update(parseInt(id!), payload);
-        await Promise.all([loadCompany(), loadHistory()]); // refresh first so the view never flashes stale data
-        setEditing(false);
         toast('Changes saved');
+        if (openedForEdit.current) {
+          navigate(backTo); // back to the same list page the user came from
+        } else {
+          await Promise.all([loadCompany(), loadHistory()]); // refresh first so the view never flashes stale data
+          setEditing(false);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Failed to save company');
@@ -221,14 +228,14 @@ export const CompanyDetailPage: React.FC = () => {
     try {
       await companyApi.delete(parseInt(id!));
       toast('Company deleted');
-      navigate('/companies');
+      navigate(backTo);
     } catch (err: any) {
       toast(err.message || 'Failed to delete company', 'error');
     }
   };
 
   const cancelEdit = () => {
-    if (isNew) navigate('/companies');
+    if (isNew || openedForEdit.current) navigate(backTo);
     else {
       setEditing(false);
       loadCompany();
@@ -249,7 +256,7 @@ export const CompanyDetailPage: React.FC = () => {
     return (
       <MainLayout>
         <div className="page page-narrow">
-          <Link to="/companies" className="back-link">← Companies</Link>
+          <Link to={backTo} className="back-link">← Companies</Link>
           <Alert tone="error">{error || 'Company not found'}</Alert>
         </div>
       </MainLayout>
@@ -261,7 +268,7 @@ export const CompanyDetailPage: React.FC = () => {
     return (
       <MainLayout>
         <div className="page page-narrow">
-          <Link to={isNew ? '/companies' : `/companies/${id}`} className="back-link">← {isNew ? 'Companies' : company?.name}</Link>
+          <Link to={isNew || openedForEdit.current ? backTo : `/companies/${id}`} className="back-link">← {isNew || openedForEdit.current ? 'Companies' : company?.name}</Link>
           <div className="page-header">
             <h1 className="page-title">{isNew ? 'New company' : 'Edit company'}</h1>
           </div>
@@ -373,7 +380,7 @@ export const CompanyDetailPage: React.FC = () => {
   return (
     <MainLayout>
       <div className="page">
-        <Link to="/companies" className="back-link">← Companies</Link>
+        <Link to={backTo} className="back-link">← Companies</Link>
 
         <div className="detail-head">
           <div className="detail-id">
@@ -457,7 +464,9 @@ export const CompanyDetailPage: React.FC = () => {
                 <InfoRow label="Owner"><Person name={c.owner_full_name} title={c.owner_email} /></InfoRow>
                 <InfoRow label="Created by"><Person name={c.created_by_full_name} title={c.created_by_email} /></InfoRow>
                 {DETAIL_KINDS.map((kind) => {
-                  const items = values(kind.type);
+                  const items = values(kind.type).flatMap((d) =>
+                    (kind.type === 'email' || kind.type === 'phone' ? splitValues([d.value]) : [d.value]).map((v) => ({ ...d, value: v, id: `${d.id}-${v}` }))
+                  );
                   if (items.length === 0) return null;
                   return (
                     <InfoRow key={kind.type} label={kind.title}>

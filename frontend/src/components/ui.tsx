@@ -134,7 +134,7 @@ export const RowMenu: React.FC<{ actions: MenuAction[]; label?: string }> = ({ a
         <Popover anchor={anchor} onClose={() => setAnchor(null)} className="menu" align="right">
           {visible.map((a, i) =>
             a.to ? (
-              <Link key={i} to={a.to} className={`menu-item${a.danger ? ' menu-item-danger' : ''}`} onClick={() => setAnchor(null)}>
+              <Link key={i} to={a.to} role="menuitem" className={`menu-item${a.danger ? ' menu-item-danger' : ''}`} onClick={() => setAnchor(null)}>
                 {a.label}
               </Link>
             ) : (

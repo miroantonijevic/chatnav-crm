@@ -3,6 +3,7 @@
  */
 import React from 'react';
 import { followUpInfo } from '../utils/pipeline';
+import { splitValues } from '../utils/lists';
 
 /** Coloured follow-up chip (Overdue / Today / In 3 days / date). */
 export const FollowUpBadge: React.FC<{ value?: string | null; emptyLabel?: string }> = ({ value, emptyLabel = '—' }) => {
@@ -16,7 +17,9 @@ export const FollowUpBadge: React.FC<{ value?: string | null; emptyLabel?: strin
 };
 
 /** First e-mail and phone as links, with a "+N" badge when there are more. */
-export const ContactLinks: React.FC<{ emails: string[]; phones: string[] }> = ({ emails, phones }) => {
+export const ContactLinks: React.FC<{ emails: string[]; phones: string[] }> = ({ emails: rawEmails, phones: rawPhones }) => {
+  const emails = splitValues(rawEmails);
+  const phones = splitValues(rawPhones);
   if (emails.length === 0 && phones.length === 0) return <span className="faint">—</span>;
   const extra = emails.length + phones.length - (emails[0] ? 1 : 0) - (phones[0] ? 1 : 0);
   const all = [...emails, ...phones].join('\n');

@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useConfirm, useToast } from '../contexts/UiContext';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { toInputLocal } from '../utils/dates';
+import { listUrl, splitValues } from '../utils/lists';
 import { STAGE_META, STATUS_LABELS, WAITING_META, formatDeal } from '../utils/pipeline';
 import { HotBadge, HotToggle } from '../components/HotToggle';
 import { PipelineFields } from '../components/PipelineFields';
@@ -44,6 +45,8 @@ export const ContactDetailPage: React.FC = () => {
   const confirm = useConfirm();
   const [searchParams] = useSearchParams();
   const isNew = id === 'new';
+  const backTo = listUrl('contacts');
+  const openedForEdit = useRef(searchParams.get('edit') === 'true'); // came from a list row's Edit action
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -196,9 +199,13 @@ export const ContactDetailPage: React.FC = () => {
         navigate(`/contacts/${created.id}`);
       } else {
         await contactApi.update(parseInt(id!), payload);
-        await Promise.all([loadContact(), loadHistory()]); // refresh first so the view never flashes stale data
-        setEditing(false);
         toast('Changes saved');
+        if (openedForEdit.current) {
+          navigate(backTo); // back to the same list page the user came from
+        } else {
+          await Promise.all([loadContact(), loadHistory()]); // refresh first so the view never flashes stale data
+          setEditing(false);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Failed to save contact');
@@ -219,14 +226,14 @@ export const ContactDetailPage: React.FC = () => {
     try {
       await contactApi.delete(parseInt(id!));
       toast('Contact deleted');
-      navigate('/contacts');
+      navigate(backTo);
     } catch (err: any) {
       toast(err.message || 'Failed to delete contact', 'error');
     }
   };
 
   const cancelEdit = () => {
-    if (isNew) navigate('/contacts');
+    if (isNew || openedForEdit.current) navigate(backTo);
     else {
       setEditing(false);
       loadContact(); // discard unsaved changes
@@ -247,7 +254,7 @@ export const ContactDetailPage: React.FC = () => {
     return (
       <MainLayout>
         <div className="page page-narrow">
-          <Link to="/contacts" className="back-link">← Contacts</Link>
+          <Link to={backTo} className="back-link">← Contacts</Link>
           <Alert tone="error">{error || 'Contact not found'}</Alert>
         </div>
       </MainLayout>
@@ -259,7 +266,7 @@ export const ContactDetailPage: React.FC = () => {
     return (
       <MainLayout>
         <div className="page page-narrow">
-          <Link to={isNew ? '/contacts' : `/contacts/${id}`} className="back-link">← {isNew ? 'Contacts' : fullName}</Link>
+          <Link to={isNew || openedForEdit.current ? backTo : `/contacts/${id}`} className="back-link">← {isNew || openedForEdit.current ? 'Contacts' : fullName}</Link>
           <div className="page-header">
             <h1 className="page-title">{isNew ? 'New contact' : 'Edit contact'}</h1>
           </div>
@@ -386,15 +393,15 @@ export const ContactDetailPage: React.FC = () => {
 
   // ── read-only view ─────────────────────────────────────────────────
   const c = contact!;
-  const emails = [...(c.email ? [c.email] : []), ...c.contact_details.filter((d) => d.type === 'email').map((d) => d.value)].filter((v, i, a) => a.indexOf(v) === i);
-  const phones = [...(c.phone ? [c.phone] : []), ...c.contact_details.filter((d) => d.type === 'phone').map((d) => d.value)].filter((v, i, a) => a.indexOf(v) === i);
+  const emails = splitValues([...(c.email ? [c.email] : []), ...c.contact_details.filter((d) => d.type === 'email').map((d) => d.value)]);
+  const phones = splitValues([...(c.phone ? [c.phone] : []), ...c.contact_details.filter((d) => d.type === 'phone').map((d) => d.value)]);
   const stage = c.deal_stage ? STAGE_META[c.deal_stage] : null;
   const waiting = c.waiting_on ? WAITING_META[c.waiting_on] : null;
 
   return (
     <MainLayout>
       <div className="page">
-        <Link to="/contacts" className="back-link">← Contacts</Link>
+        <Link to={backTo} className="back-link">← Contacts</Link>
 
         <div className="detail-head">
           <div className="detail-id">

@@ -9,6 +9,8 @@ import { Contact, EntityStats, RelationshipStatus } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm, useToast } from '../contexts/UiContext';
 import { useListParams } from '../hooks/useListParams';
+import { rememberListUrl } from '../utils/lists';
+import { useLocation } from 'react-router-dom';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { useScrollRestoration } from '../utils/useScrollRestoration';
 import { fromServer, fmtDate } from '../utils/dates';
@@ -28,6 +30,9 @@ export const ContactsListPage: React.FC = () => {
   const toast = useToast();
   const confirm = useConfirm();
   const list = useListParams();
+  const location = useLocation();
+  // remember search / filters / sort / page so detail pages can return to this exact view
+  useEffect(() => rememberListUrl('contacts', location.pathname + location.search), [location.pathname, location.search]);
   const { params, setParam, search, page, pageSize, sortBy, sortOrder } = list;
 
   const status = (Object.values(RelationshipStatus) as string[]).includes(params.get('status') ?? '') ? params.get('status')! : '';

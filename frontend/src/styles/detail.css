@@ -18,7 +18,7 @@
 .info-row dd { margin: 0; font-size: 0.9rem; overflow-wrap: anywhere; }
 .info-sub { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; }
 .chip-list { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.detail-chip { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); color: var(--ink-2); font-size: 0.82rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.detail-chip { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 6px; background: var(--soft); border: 1px solid var(--line); color: var(--ink-2); font-size: 0.82rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 a.detail-chip:hover { background: var(--brand-50); border-color: #c3cbf5; color: var(--brand-700); text-decoration: none; }
 .detail-chip em { color: var(--muted); font-style: normal; }
 .notes-text { white-space: pre-wrap; line-height: 1.6; font-size: 0.92rem; }
